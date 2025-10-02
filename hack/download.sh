@@ -173,7 +173,7 @@ For more details on what's new, see the [Kubernetes release notes](https://githu
 | Kube Scheduler | [${KUBERNETES_VERSION}](https://github.com/kubernetes/kubernetes/releases/tag/${KUBERNETES_VERSION}) |
 | Helm | [${HELM_VERSION}](https://github.com/helm/helm/releases/tag/${HELM_VERSION}) |
 | Etcd | [${ETCD_VERSION}](https://github.com/etcd-io/etcd/releases/tag/${ETCD_VERSION}) |
-| Kine | [${KINE_VERSION}](https://github.com/k3s-io/kine/releases/tag/${KINE_VERSION}) |
+| Kine | [${KINE_VERSION}](https://github.com/loft-sh/kine/releases/tag/${KINE_VERSION}) |
 | Konnectivity | [${KONNECTIVITY_VERSION}](https://github.com/kubernetes-sigs/apiserver-network-proxy/releases/tag/${KONNECTIVITY_VERSION}) |
 | Kubeadm | [${KUBERNETES_VERSION}](https://github.com/kubernetes/kubernetes/releases/tag/${KUBERNETES_VERSION}) |
 | Kubelet | [${KUBERNETES_VERSION}](https://github.com/kubernetes/kubernetes/releases/tag/${KUBERNETES_VERSION}) |
@@ -234,7 +234,7 @@ rm -R ./etcd
 
 # Install kine
 echo "Downloading kine ${KINE_VERSION}..."
-curl -s -L -o kine https://github.com/k3s-io/kine/releases/download/${KINE_VERSION}/kine-${TARGETARCH}
+curl -s -L -o kine https://github.com/loft-sh/kine/releases/download/${KINE_VERSION}/kine-${TARGETARCH}
 chmod +x kine
 cp kine ./kine-${TARGETARCH}
 mv kine ./release/kine
