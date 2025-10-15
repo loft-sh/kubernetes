@@ -90,6 +90,13 @@ jobs:
           for VERSION in $(echo $STABLE_RELEASES | jq -r '.[]'); do
             # Check if release already exists in this repo or if version is below 1.28
             if [[ $(echo $VERSION | sed 's/v//') =~ ^([0-9]+)\.([0-9]+) ]] && [[ ${BASH_REMATCH[1]} -gt 1 || (${BASH_REMATCH[1]} -eq 1 && ${BASH_REMATCH[2]} -ge $KUBERNETES_MINOR_VERSION) ]]; then
+              # Check if there is a kubernetes-$VERSION file
+              KUBERNETES_VERSION_TRIMMED=$(echo ${VERSION} | sed -E 's/^(v[0-9]+\.[0-9]+)\.[0-9]+$/\1/')
+              if [ ! -f "./kubernetes-${KUBERNETES_VERSION_TRIMMED}" ]; then
+                echo "Versions file for Kubernetes $VERSION does not exist, skipping"
+                continue
+              fi
+
               if gh release view $VERSION --repo ${{ github.repository }} &>/dev/null && [[ $FORCE == "false" ]]; then
                 echo "Release for Kubernetes $VERSION already exists, skipping"
                 continue
@@ -98,10 +105,10 @@ jobs:
               echo "Building release for Kubernetes $VERSION..."
               
               # Download for amd64
-              ./download.sh --kubernetes-version $VERSION --target-arch amd64 --control-plane
+              ./download.sh --kubernetes-version $VERSION --target-arch amd64
               
               # Download for arm64
-              ./download.sh --kubernetes-version $VERSION --target-arch arm64 --control-plane
+              ./download.sh --kubernetes-version $VERSION --target-arch arm64
               
               # Create a new release with the archives as assets
               if gh release view $VERSION --repo ${{ github.repository }} &>/dev/null; then
