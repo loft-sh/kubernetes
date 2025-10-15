@@ -153,6 +153,7 @@ curl -s -L -o vcluster-tunnel https://github.com/loft-sh/tailscale/releases/down
 echo "Downloading pause image ${PAUSE_IMAGE_VERSION}..."
 docker pull --platform=linux/${TARGETARCH} registry.k8s.io/pause:${PAUSE_IMAGE_VERSION}
 docker save -o ./release/pause-image.tar registry.k8s.io/pause:${PAUSE_IMAGE_VERSION}
+echo "registry.k8s.io/pause:${PAUSE_IMAGE_VERSION}" > ./release/pause-image.txt
 
 # Pack the release folder into a tar.gz file
 echo "Packing the release folder into kubernetes-${KUBERNETES_VERSION}-${TARGETARCH}.tar.gz..."
