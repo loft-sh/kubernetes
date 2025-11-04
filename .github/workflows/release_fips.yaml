@@ -1,0 +1,148 @@
+name: Kubernetes
+
+on:
+  workflow_dispatch:  # Allow manual triggering
+    inputs:
+      force:
+        description: Force the build even if the release already exists
+        default: "false"
+        type: string
+      kubernetes_minor_version:
+        description: The minimum minor version of Kubernetes to build
+        type: string
+        default: "v1.33.0"
+      etcd_version:
+        description: etcd-fips version to use
+        type: string
+        default: "v3.5.17"
+      helm_version:
+        description: helm-fips version to use
+        type: string
+        default: "v3.17.3"
+      kine_version:
+        description: kin-fips version to use
+        type: string
+        default: "v0.13.14"
+      konnectivity_version:
+        description: ghcr.io/loft-sh/konnectivity-server-fips image tag
+        type: string
+        default: "v0.32.0"
+
+jobs:
+  build-missing-k8s-versions:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create kubernetes-fips tar gz release assets
+        run: |        
+          # Parse the force flag from the inputs
+          FORCE=${{ inputs.force }}
+          if [ -z "$FORCE" ]; then
+            FORCE=false
+          fi
+
+          KUBERNETES_MINOR_VERSION=${{ inputs.kubernetes_minor_version }}
+          if [ -z "$KUBERNETES_MINOR_VERSION" ]; then
+            KUBERNETES_MINOR_VERSION="28"
+          fi
+          
+          ETCD_VERSION=${{ inputs.etcd_version }}
+          HELM_VERSION=${{ inputs.helm_version }}
+          KINE_VERSION=${{ inputs.kine_version }}
+          KONNECTIVITY_VERSION=${{ inputs.konnectivity_version }}
+          
+          # Setup GitHub CLI
+          gh auth login --with-token <<< "${{ secrets.GITHUB_TOKEN }}"
+          
+          cd hack
+          
+          echo "Building release for Kubernetes ${KUBERNETES_MINOR_VERSION}.."
+      
+          # Download for amd64 and arm64
+          ./download-fips.sh --target-arch amd64 --kubernetes-version ${KUBERNETES_MINOR_VERSION} --etcd-version ${ETCD_VERSION} --helm-version ${HELM_VERSION} --kine-version ${KINE_VERSION} --konnectivity-version ${KONNECTIVITY_VERSION}      
+          ./download-fips.sh --target-arch arm64 --kubernetes-version ${KUBERNETES_MINOR_VERSION} --etcd-version ${ETCD_VERSION} --helm-version ${HELM_VERSION} --kine-version ${KINE_VERSION} --konnectivity-version ${KONNECTIVITY_VERSION}      
+      
+          # Create a new release with the archives as assets
+          if gh release view $VERSION --repo ${{ github.repository }} &>/dev/null; then
+            gh release upload "$VERSION" \
+              "./kubernetes-$VERSION-amd64-fips.tar.gz" \
+              "./kubernetes-$VERSION-arm64-fips.tar.gz" \
+              "./kubernetes-$VERSION-amd64-fips-full.tar.gz" \
+              "./kubernetes-$VERSION-arm64-fips-full.tar.gz" \
+              --repo ${{ github.repository }} \
+              --clobber
+
+            # Edit the release notes to include the component versions
+            gh release edit "$VERSION" \
+              --notes-file "./kubernetes-$VERSION.txt" \
+              --repo ${{ github.repository }}
+
+            echo "Updated release for Kubernetes $VERSION"
+          else
+            gh release create $VERSION \
+              --title "Kubernetes $VERSION" \
+              --notes-file "./kubernetes-$VERSION.txt" \
+              --repo ${{ github.repository }} \
+              "./kubernetes-$VERSION-amd64-fips.tar.gz" \
+              "./kubernetes-$VERSION-arm64-fips.tar.gz" \
+              "./kubernetes-$VERSION-amd64-fips-full.tar.gz" \
+              "./kubernetes-$VERSION-arm64-fips-full.tar.gz"
+      
+            echo "Released Kubernetes $VERSION"
+          fi
+
+          # Remove the full archives
+          rm -f "./kubernetes-$VERSION-amd64-fips-full.tar.gz"
+          rm -f "./kubernetes-$VERSION-arm64-fips-full.tar.gz"
+
+          # Build the full image with node binaries
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            -f Dockerfile.fips \
+            --build-arg K8S_VERSION=${KUBERNETES_MINOR_VERSION} \
+            --build-arg ETCD_VERSION=${ETCD_VERSION} \
+            --build-arg HELM_VERSION=${HELM_VERSION} \
+            --build-arg KINE_VERSION=${KINE_VERSION} \
+            --build-arg KONNECTIVITY_VERSION=${KONNECTIVITY_VERSION} \
+            -t ghcr.io/loft-sh/kubernetes:$VERSION-fips-full \
+            --push .
+
+          # Remove the node archives
+          rm -f "./kubernetes-*.tar.gz"
+
+      - name: Build and push node image
+        id: push
+        uses: docker/build-push-action@v6
+        with:
+          platforms: linux/amd64,linux/arm64
+          context: ./hack
+          push: true
+          file: Dockerfile.fips
+          sbom: true
+          provenance: true
+          tags: ghcr.io/loft-sh/kubernetes:v${{ inputs.kubernetes_minor_version }}-fips-full
+          build-args: |
+            K8S_VERSION=${{ inputs.kubernetes_minor_version }}
+            ETCD_VERSION=${{ inputs.etcd_version }}
+            HELM_VERSION=${{ inputs.helm_version }}
+            KINE_VERSION=${{ inputs.kine_version }}
+            KONNECTIVITY_VERSION=${{ inputs.konnectivity_version }}
+      - name: Attest
+        uses: actions/attest-build-provenance@v2
+        id: attest
+        with:
+          subject-name: ghcr.io/loft-sh/kubernetes
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true

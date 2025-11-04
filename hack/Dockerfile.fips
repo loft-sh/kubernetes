@@ -1,0 +1,31 @@
+ARG K8S_VERSION="local"
+ARG ETCD_VERSION="v3.5.17"
+ARG HELM_VERSION="v3.17.3"
+ARG KINE_VERSION="v0.13.14"
+ARG KONNECTIVITY_VERSION="v0.32.0"
+
+FROM kubernetes-fips:${K8S_VERSION} AS k8s-local
+FROM ghcr.io/loft-sh/etcd-fips:${ETCD_VERSION} AS etcd-fips
+FROM ghcr.io/loft-sh/helm-fips:${HELM_VERSION} AS helm-fips
+FROM ghcr.io/loft-sh/kine-fips:${KINE_VERSION} AS kine-fips
+FROM ghcr.io/loft-sh/konnectivity-server-fips:${KONNECTIVITY_VERSION} AS konnectivity-fips
+
+# we use the distroless base-nossl debug image, as it contains
+# a basic shell, glibc and nothing else.
+FROM gcr.io/distroless/base-nossl:debug
+
+ARG K8S_VERSION="v1.33.0"
+
+COPY --chown=kubernetes:kubernetes --from=k8s-local /kubernetes/kube-apiserver /kubernetes/kube-apiserver
+COPY --chown=kubernetes:kubernetes --from=k8s-local /kubernetes/kube-controller-manager /kubernetes/kube-controller-manager
+COPY --chown=kubernetes:kubernetes --from=k8s-local /kubernetes/kube-scheduler /kubernetes/kube-scheduler
+COPY --chown=kubernetes:kubernetes --from=helm-fips /usr/local/bin/helm /kubernetes/helm
+COPY --chown=kubernetes:kubernetes --from=etcd-fips /bin/etcd /kubernetes/etcd
+COPY --chown=kubernetes:kubernetes --from=etcd-fips /bin/etcdctl /kubernetes/etcdctl
+COPY --chown=kubernetes:kubernetes --from=kine-fips /bin/kine /kubernetes/kine
+COPY --chown=kubernetes:kubernetes --from=konnectivity-fips /bin/konnectivity-server /kubernetes/konnectivity-server
+COPY --chown=kubernetes:kubernetes ./kubernetes-*fips.tar.gz /kubernetes/
+
+# Set up the container
+WORKDIR /
+USER kubernetes
