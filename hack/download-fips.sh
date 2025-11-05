@@ -150,7 +150,7 @@ echo "rancher/mirrored-pause:${PAUSE_IMAGE_VERSION}" > ./release/pause-image.txt
 
 # create tar archive
 echo "creating node components tar archive..."
-tar -zcf "kubernetes-${KUBERNETES_VERSION_TRIMMED}-${TARGET_ARCH}-fips.tar.gz" "${OUTPUT_DIR}"
+tar -zcf "kubernetes-${KUBERNETES_VERSION}-${TARGET_ARCH}-fips.tar.gz" "${OUTPUT_DIR}"
 
 # then, delete node components, just keep the tar archive,
 rm -r $OUTPUT_DIR
@@ -165,7 +165,7 @@ fi
 
 
 # remove node binaries, keep them in tar archive only
-cp "kubernetes-${KUBERNETES_VERSION_TRIMMED}-${TARGET_ARCH}-fips.tar.gz" $OUTPUT_DIR
+cp "kubernetes-${KUBERNETES_VERSION}-${TARGET_ARCH}-fips.tar.gz" $OUTPUT_DIR
 rm -r $OUTPUT_DIR/cni
 rm $OUTPUT_DIR/containerd $OUTPUT_DIR/containerd-shim-runc-v2 $OUTPUT_DIR/containerd-stress $OUTPUT_DIR/ctr $OUTPUT_DIR/kubeadm $OUTPUT_DIR/kubectl $OUTPUT_DIR/kubelet $OUTPUT_DIR/runc
 
@@ -221,8 +221,8 @@ else
 fi
 
 # create archive
-echo "creating kubernetes-${KUBERNETES_VERSION_TRIMMED}-${TARGET_ARCH}-fips-full.tar.gz archive..."
-tar -zcf "kubernetes-${KUBERNETES_VERSION_TRIMMED}-${TARGET_ARCH}-fips-full.tar.gz" "${OUTPUT_DIR}"
+echo "creating kubernetes-${KUBERNETES_VERSION}-${TARGET_ARCH}-fips-full.tar.gz archive..."
+tar -zcf "kubernetes-${KUBERNETES_VERSION}-${TARGET_ARCH}-fips-full.tar.gz" "${OUTPUT_DIR}"
 
 docker rm "$KONNECTIVITY_CONTAINER_ID" "$KINE_CONTAINER_ID" "$HELM_CONTAINER_ID" "$ETCD_CONTAINER_ID" "$CONTAINER_ID" || true
 rm -r $OUTPUT_DIR

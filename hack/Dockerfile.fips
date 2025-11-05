@@ -24,7 +24,8 @@ COPY --chown=kubernetes:kubernetes --from=etcd-fips /bin/etcd /kubernetes/etcd
 COPY --chown=kubernetes:kubernetes --from=etcd-fips /bin/etcdctl /kubernetes/etcdctl
 COPY --chown=kubernetes:kubernetes --from=kine-fips /bin/kine /kubernetes/kine
 COPY --chown=kubernetes:kubernetes --from=konnectivity-fips /bin/konnectivity-server /kubernetes/konnectivity-server
-COPY --chown=kubernetes:kubernetes ./kubernetes-*fips.tar.gz /kubernetes/
+COPY --chown=kubernetes:kubernetes ./kubernetes-${K8S_VERSION}-amd64-fips.tar.gz /kubernetes/kubernetes-${K8S_VERSION}-amd64.tar.gz
+COPY --chown=kubernetes:kubernetes ./kubernetes-${K8S_VERSION}-arm64-fips.tar.gz /kubernetes/kubernetes-${K8S_VERSION}-arm64.tar.gz
 
 # Set up the container
 WORKDIR /
