@@ -1,0 +1,39 @@
+ARG GO_VERSION=1.24
+FROM docker.io/library/golang:${GO_VERSION}-bookworm AS build
+
+RUN apt-get update -y && \
+  apt-get install -y --no-install-recommends \
+  git;
+
+ARG ETCD_VERSION=v3.5.21
+WORKDIR /
+RUN git -c advice.detachedHead=false clone -b $ETCD_VERSION --depth=1 https://github.com/etcd-io/etcd.git
+
+WORKDIR /etcd/server
+RUN go version
+
+COPY go-assert-fips.sh /etcd/server/
+
+# build etcd
+RUN CGO_ENABLED=1 \
+  GOFIPS140=v1.0.0 \
+  go build -v \
+  -installsuffix=cgo \
+  -ldflags="-X=go.etcd.io/etcd/api/v3/version.GitSHA=$(git rev-parse --short HEAD || echo "GitNotFound")" \
+  -o /bin/etcd && \
+  ./go-assert-fips.sh /bin/etcd
+
+# build etcdctl
+WORKDIR /etcd/etcdctl
+COPY go-assert-fips.sh /etcd/etcdctl/
+RUN CGO_ENABLED=1 \
+  GOFIPS140=v1.0.0 \
+  go build -v \
+  -installsuffix=cgo \
+  -ldflags="-X=go.etcd.io/etcd/api/v3/version.GitSHA=$(git rev-parse --short HEAD || echo "GitNotFound")" \
+  -o /bin/etcdctl && \
+  ./go-assert-fips.sh /bin/etcdctl
+
+FROM scratch
+COPY --from=build /bin/etcd /bin/etcd
+COPY --from=build /bin/etcdctl /bin/etcdctl

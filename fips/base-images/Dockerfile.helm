@@ -1,0 +1,22 @@
+ARG GO_VERSION=1.24
+FROM docker.io/library/golang:${GO_VERSION}-bookworm AS build
+
+RUN apt-get update -y && \
+  apt-get install -y --no-install-recommends \
+  git;
+
+ARG HELM_VERSION=v3.16.3
+WORKDIR /
+RUN git -c advice.detachedHead=false clone -b $HELM_VERSION --depth=1 https://github.com/helm/helm.git
+
+WORKDIR /helm
+
+COPY go-assert-fips.sh /helm
+
+ENV GOFIPS140=v1.0.0
+RUN make CGO_ENABLED=1 VERSION_METADATA=loft-fips GIT_DIRTY=clean LDFLAGS='-w' && \
+  make install && \
+  ./go-assert-fips.sh /usr/local/bin/helm
+
+FROM scratch
+COPY --from=build /usr/local/bin/helm /usr/local/bin/helm

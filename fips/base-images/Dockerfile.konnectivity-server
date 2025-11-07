@@ -1,0 +1,28 @@
+ARG GO_VERSION=1.24
+FROM docker.io/library/golang:${GO_VERSION}-bookworm AS build
+
+RUN apt-get update -y && \
+  apt-get install -y --no-install-recommends \
+  git;
+
+ARG KONNECTIVITY_SERVER_VERSION=v0.32.0
+WORKDIR /
+RUN git -c advice.detachedHead=false clone -b $KONNECTIVITY_SERVER_VERSION --depth=1 https://github.com/kubernetes-sigs/apiserver-network-proxy.git
+
+WORKDIR /apiserver-network-proxy
+RUN go version
+
+COPY go-assert-fips.sh /apiserver-network-proxy
+
+# build konnectivity-server
+RUN CGO_ENABLED=1 \
+  GOFIPS140=v1.0.0 \
+  go build -v \
+  -installsuffix=cgo \
+  -o /bin/konnectivity-server \
+  ./cmd/server && \
+  ./go-assert-fips.sh /bin/konnectivity-server
+
+
+FROM scratch
+COPY --from=build /bin/konnectivity-server /bin/konnectivity-server

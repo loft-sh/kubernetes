@@ -1,0 +1,26 @@
+ARG GO_VERSION=1.24
+FROM docker.io/library/golang:${GO_VERSION}-bookworm AS build
+
+RUN apt-get update -y && \
+  apt-get install -y --no-install-recommends \
+  git;
+
+ARG KINE_VERSION=v0.13.8
+WORKDIR /
+RUN git -c advice.detachedHead=false clone -b $KINE_VERSION --depth=1 https://github.com/rancher/kine.git
+
+WORKDIR /kine
+RUN go version
+
+COPY go-assert-fips.sh /kine/go-assert-fips.sh
+
+RUN CGO_ENABLED=1 \
+  GOFIPS140=v1.0.0 \
+  CGO_CFLAGS="-DSQLITE_ENABLE_DBSTAT_VTAB=1 -DSQLITE_USE_ALLOCA=1" \
+  go build -v -tags="nats" \
+  -ldflags="-X github.com/k3s-io/kine/pkg/version.Version=$KINE_VERSION+loft-fips -X github.com/k3s-io/kine/pkg/version.GitCommit=$(git rev-parse --short HEAD)" \
+  -o kine && \
+  ./go-assert-fips.sh kine
+
+FROM scratch
+COPY --from=build /kine/kine /bin/kine
