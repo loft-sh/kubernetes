@@ -17,7 +17,10 @@ on:
       force:
         description: Force the build even if the release already exists
         default: "false"
-        type: string
+        type: choice
+        options:
+          - "false"
+          - "true"
       kubernetes_minor_version:
         description: The minimum minor version of Kubernetes to build
         type: string
@@ -76,6 +79,22 @@ jobs:
           # Setup GitHub CLI
           gh auth login --with-token <<< "${{ secrets.GITHUB_TOKEN }}"
           
+          FORCE="${{ inputs.force }}"
+
+          # Check if image exists
+          if docker manifest inspect ghcr.io/loft-sh/kubernetes:${{ matrix.version }}-fips-full > /dev/null 2>&1; then
+            echo "Image ghcr.io/loft-sh/kubernetes:${{ matrix.version }}-fips-full already exists in registry"
+
+            if [ "$FORCE" != "true" ]; then
+              echo "Force is not enabled - exiting pipeline"
+              exit 0
+            else
+              echo "Force enabled - rebuilding image anyway"
+            fi
+          else
+            echo "Image not found, building..."
+          fi
+
           cd fips
 
           VERSION=${{ matrix.version }}
@@ -139,6 +158,7 @@ jobs:
           provenance: true
           tags: ghcr.io/loft-sh/kubernetes:${{ matrix.version }}-fips-full
           build-args: ${{ steps.build-args.outputs.args }}
+
       - name: Attest
         uses: actions/attest-build-provenance@v2
         id: attest
