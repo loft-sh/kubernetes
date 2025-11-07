@@ -1,0 +1,185 @@
+ARG GO_VERSION=1.24
+FROM docker.io/library/golang:${GO_VERSION}-bookworm AS build
+
+ARG KUBERNETES_VERSION=v1.33.0
+ARG KUBERNETES_BINS="kubeadm kubectl kubelet kube-apiserver kube-controller-manager kube-scheduler"
+
+RUN apt-get update -y && \
+  apt-get install -y --no-install-recommends \
+  git \
+  rsync \
+  grep \
+  coreutils \
+  gcc;
+
+RUN  mkdir -p "$GOPATH/src/github.com/kubernetes/kubernetes"; \
+  git -c advice.detachedHead=false clone -b "$KUBERNETES_VERSION" --depth=1 https://github.com/kubernetes/kubernetes.git "$GOPATH/src/github.com/kubernetes/kubernetes"
+
+WORKDIR /go/src/github.com/kubernetes/kubernetes
+
+ARG BUILD_GO_TAGS="providerless"
+ARG BUILD_GO_FLAGS="-v"
+ARG BUILD_GO_LDFLAGS_EXTRA
+
+COPY go-assert-fips.sh /
+
+RUN \
+  set -ex; \
+  export GOPATH=/go; \
+  commands="${KUBERNETES_BINS}"; \
+  # Ensure that all of the binaries are built with CGO \
+  export CGO_ENABLED=1; \
+  export KUBE_CGO_OVERRIDES="$commands"; \
+  export GOFIPS140=v1.0.0; \
+  mkdir /out; \
+  SOURCE_DATE_EPOCH="$(git log -1 --pretty=%ct || date -u +%s)"; \
+  export SOURCE_DATE_EPOCH; \
+  export FORCE_HOST_GO=y; \
+  export KUBE_VERBOSE=9; \
+  export KUBE_GIT_VERSION="$KUBERNETES_VERSION+loft-fips"; \
+  export KUBE_GIT_TREE_STATE="clean"; \
+  for cmd in $commands; do \
+  make GOFLAGS="${BUILD_GO_FLAGS} -tags=${BUILD_GO_TAGS}" GOLDFLAGS="${BUILD_GO_LDFLAGS_EXTRA}" WHAT="cmd/$cmd" DBG=1; \
+  mv /go/src/github.com/kubernetes/kubernetes/_output/local/bin/*/*/"$cmd" /out/; \
+  /go-assert-fips.sh /out/$cmd; \
+  done
+
+
+FROM docker.io/library/golang:${GO_VERSION}-bookworm AS build-cni-plugins
+ARG GO_VERSION=1.24
+ARG CNI_PLUGINS_VERSION=v1.8.0
+ARG CNI_META_PLUGINS="bandwidth firewall portmap"
+ARG CNI_MAIN_PLUGINS="bridge loopback"
+ARG CNI_IPAM_PLUGINS="host-local"
+
+RUN apt-get update -y && \
+  apt-get install -y --no-install-recommends \
+  git \
+  rsync \
+  grep \
+  coreutils \
+  gcc;
+
+RUN  mkdir -p "$GOPATH/src/github.com/containernetworking/"; \
+  git -c advice.detachedHead=false clone -b "$CNI_PLUGINS_VERSION" --depth=1 https://github.com/containernetworking/plugins.git "$GOPATH/src/github.com/containernetworking/plugins"
+
+COPY go-assert-fips.sh /
+
+WORKDIR /go/src/github.com/containernetworking/plugins
+
+RUN mkdir -p ./bin
+
+RUN set -ex; \
+  mkdir -p ./bin /out; \
+  export CGO_ENABLED=1; \
+  export GOFIPS140=v1.0.0; \
+  export GOFLAGS="-mod=vendor"; \
+  \
+  # Build main plugins \
+  for cmd in ${CNI_MAIN_PLUGINS}; do \
+    CGO_ENABLED=1 GOFIPS140=v1.0.0 go build -v -installsuffix=cgo -tags=fips140 -o "bin/$cmd" -ldflags "-extldflags -static -X github.com/containernetworking/plugins/pkg/utils/buildversion.BuildVersion=${CNI_PLUGINS_VERSION}" "./plugins/main/$cmd"; \
+    /go-assert-fips.sh "bin/$cmd"; \
+    mv "bin/$cmd" "/out/$cmd"; \
+  done; \
+  \
+  # Build meta plugins \
+  for cmd in ${CNI_META_PLUGINS}; do \
+    CGO_ENABLED=1 GOFIPS140=v1.0.0 go build -v -installsuffix=cgo -tags=fips140 -o "bin/$cmd" -ldflags "-extldflags -static -X github.com/containernetworking/plugins/pkg/utils/buildversion.BuildVersion=${CNI_PLUGINS_VERSION}" "./plugins/meta/$cmd"; \
+    /go-assert-fips.sh "bin/$cmd"; \
+    mv "bin/$cmd" "/out/$cmd"; \
+  done; \
+  \
+  # Build IPAM plugins \
+  for cmd in ${CNI_IPAM_PLUGINS}; do \
+    CGO_ENABLED=1 GOFIPS140=v1.0.0 go build -v -installsuffix=cgo -tags=fips140 -o "bin/$cmd" -ldflags "-extldflags -static -X github.com/containernetworking/plugins/pkg/utils/buildversion.BuildVersion=${CNI_PLUGINS_VERSION}" "./plugins/ipam/$cmd"; \
+    /go-assert-fips.sh "bin/$cmd"; \
+    mv "bin/$cmd" "/out/$cmd"; \
+  done
+
+
+FROM docker.io/library/golang:${GO_VERSION}-bookworm AS build-runc
+ARG GO_VERSION=1.24
+ARG RUNC_VERSION=v1.3.3
+
+RUN apt-get update -y && \
+  apt-get install -y --no-install-recommends \
+  git \
+  rsync \
+  grep \
+  coreutils \
+  linux-libc-dev \
+  libseccomp-dev \
+  pkg-config \
+  gcc;
+
+RUN  mkdir -p "$GOPATH/src/github.com/opencontainers/runc"; \
+  git -c advice.detachedHead=false clone -b "$RUNC_VERSION" --depth=1 https://github.com/opencontainers/runc.git "$GOPATH/src/github.com/opencontainers/runc"
+
+WORKDIR /go/src/github.com/opencontainers/runc
+
+COPY go-assert-fips.sh /
+
+RUN \
+  set -ex; \
+  export GOPATH=/go; \
+  # Ensure that all of the binaries are built with CGO \
+  export CGO_ENABLED=1; \
+  export GOFIPS140=v1.0.0; \
+  mkdir /out; \
+  SOURCE_DATE_EPOCH="$(git log -1 --pretty=%ct || date -u +%s)"; \
+  export SOURCE_DATE_EPOCH; \
+  export FORCE_HOST_GO=y; \
+  make runc; \
+  mv /go/src/github.com/opencontainers/runc/runc /out/runc; \
+  /go-assert-fips.sh /out/runc;
+
+
+FROM docker.io/library/golang:${GO_VERSION}-bookworm AS build-containerd
+ARG GO_VERSION=1.24
+ARG CONTAINERD_VERSION=2.1.4
+
+
+RUN apt-get update -y && \
+  apt-get install -y --no-install-recommends \
+  git \
+  rsync \
+  grep \
+  coreutils \
+  linux-libc-dev \
+  libseccomp-dev \
+  pkg-config \
+  gcc;
+
+RUN  mkdir -p "$GOPATH/src/github.com/containerd/containerd"; \
+  git -c advice.detachedHead=false clone -b "v$CONTAINERD_VERSION" --depth=1 https://github.com/containerd/containerd.git "$GOPATH/src/github.com/containerd/containerd"
+
+WORKDIR /go/src/github.com/containerd/containerd
+
+COPY go-assert-fips.sh /
+
+RUN \
+  set -ex; \
+  export GOPATH=/go; \
+  # Ensure that all of the binaries are built with CGO \
+  export CGO_ENABLED=1; \
+  export GOFIPS140=v1.0.0; \
+  mkdir /out; \
+  SOURCE_DATE_EPOCH="$(git log -1 --pretty=%ct || date -u +%s)"; \
+  export SOURCE_DATE_EPOCH; \
+  export FORCE_HOST_GO=y; \
+  make all; \
+  mv /go/src/github.com/containerd/containerd/bin/containerd /out/containerd; \
+  mv /go/src/github.com/containerd/containerd/bin/containerd-shim-runc-v2 /out/containerd-shim-runc-v2; \
+  mv /go/src/github.com/containerd/containerd/bin/ctr /out/ctr; \
+  /go-assert-fips.sh /out/containerd; \
+  /go-assert-fips.sh /out/containerd-shim-runc-v2; \
+  /go-assert-fips.sh /out/ctr;
+
+
+FROM gcr.io/distroless/base-nossl:debug
+
+COPY --chown=kubernetes:kubernetes --from=build out/* /kubernetes/
+COPY --chown=kubernetes:kubernetes --from=build-cni-plugins out/* /kubernetes/cni/bin/
+COPY --chown=kubernetes:kubernetes --from=build-cni-plugins out/* /kubernetes/cni/bin/
+COPY --chown=kubernetes:kubernetes --from=build-runc out/runc /kubernetes/runc
+COPY --chown=kubernetes:kubernetes --from=build-containerd out/* /kubernetes/

@@ -4,14 +4,9 @@ set -e  # Exit on error
 # Default versions
 KUBERNETES_VERSION=""
 # Configuration
-IMAGE_NAME="kubernetes-fips:local"
 RELEASE_DIR="/kubernetes"
 
-ETCD_VERSION="v3.5.17"
-HELM_VERSION="v3.17.3"
-KINE_VERSION="v0.13.14"
-PAUSE_IMAGE_VERSION="3.9"
-KONNECTIVITY_VERSION="v0.32.0"
+VERSIONS_FILE=""
 TARGET_ARCH="amd64"
 
 # Parse command line arguments
@@ -25,24 +20,8 @@ while [ $# -gt 0 ]; do
       TARGET_ARCH="$2"
       shift 2
       ;;
-    --etcd-version)
-      ETCD_VERSION="$2"
-      shift 2
-      ;;
-    --helm-version)
-      HELM_VERSION="$2"
-      shift 2
-      ;;
-    --kine-version)
-      KINE_VERSION="$2"
-      shift 2
-      ;;
-    --konnectivity-version)
-      KONNECTIVITY_VERSION="$2"
-      shift 2
-      ;;
-    --pause-image-version)
-      PAUSE_IMAGE_VERSION="$2"
+    --versions-file)
+      VERSIONS_FILE="$2"
       shift 2
       ;;
     *)
@@ -70,33 +49,58 @@ if [ -z "$KUBERNETES_VERSION" ]; then
   exit 1
 fi
 
-if [ -z "$ETCD_VERSION" ]; then
-  echo "Error: --etcd-version is required"
-  echo "Usage: $0 --etcd-version <version>"
+if [ -z "$TARGET_ARCH" ]; then
+  echo "Error: --target-arch is required"
+  echo "Usage: $0 --target-arch <version>"
   exit 1
 fi
 
+
+if [ -z "$VERSIONS_FILE" ]; then
+  echo "Error: --versions-file is required"
+  echo "Usage: $0 --versions-file <path-to-versions-file>"
+  exit 1
+fi
+
+if [ ! -f "$VERSIONS_FILE" ]; then
+  echo "Error: $VERSIONS_FILE does not exist"
+  exit 1
+fi
+
+source "${VERSIONS_FILE}"
+
 if [ -z "$HELM_VERSION" ]; then
-  echo "Error: --helm-version is required"
-  echo "Usage: $0 --helm-version <version>"
+  echo "Error: HELM_VERSION not found in $VERSIONS_FILE file"
   exit 1
 fi
 
 if [ -z "$KINE_VERSION" ]; then
-  echo "Error: --kine-version is required"
-  echo "Usage: $0 --kine-version <version>"
+  echo "Error: KINE_VERSION not found in $VERSIONS_FILE file"
   exit 1
 fi
 
 if [ -z "$KONNECTIVITY_VERSION" ]; then
-  echo "Error: --konnectivity-version is required"
-  echo "Usage: $0 --konnectivity-version <version>"
+  echo "Error: KONNECTIVITY_VERSION not found in $VERSIONS_FILE file"
   exit 1
 fi
 
-if [ -z "$TARGET_ARCH" ]; then
-  echo "Error: --target-arch is required"
-  echo "Usage: $0 --target-arch <version>"
+if [ -z "$PAUSE_IMAGE_VERSION" ]; then
+  echo "Error: PAUSE_IMAGE_VERSION not found in $VERSIONS_FILE file"
+  exit 1
+fi
+
+if [ -z "$RUNC_VERSION" ]; then
+  echo "Error: RUNC_VERSION not found in $VERSIONS_FILE file"
+  exit 1
+fi
+
+if [ -z "$CONTAINERD_VERSION" ]; then
+  echo "Error: CONTAINERD_VERSION not found in $VERSIONS_FILE file"
+  exit 1
+fi
+
+if [ -z "$CNI_BINARIES_VERSION" ]; then
+  echo "Error: CNI_BINARIES_VERSION not found in $VERSIONS_FILE file"
   exit 1
 fi
 
@@ -113,15 +117,31 @@ mkdir -p "${OUTPUT_DIR}"
 
 
 # pulling control plane components for $TARGET_ARCH (linux/amd64 or linux/arm64)
-echo "Pulling Docker image: $IMAGE_NAME"
-#docker pull --platform=${TARGET_ARCH} "$IMAGE_NAME" TODO: uncomment
-docker pull --platform=${TARGET_OS_ARCH} "ghcr.io/loft-sh/etcd-fips:${ETCD_VERSION}"
-docker pull --platform=${TARGET_OS_ARCH}  "ghcr.io/loft-sh/helm-fips:${HELM_VERSION}"
-docker pull --platform=${TARGET_OS_ARCH}  "ghcr.io/loft-sh/kine-fips:${KINE_VERSION}"
-docker pull --platform=${TARGET_OS_ARCH}  "ghcr.io/loft-sh/konnectivity-server-fips:${KONNECTIVITY_VERSION}"
+cd base-images
+ETCD_FIPS_IMAGE="etcd-fips:${ETCD_VERSION}"
+HELM_FIPS_IMAGE="helm-fips:${HELM_VERSION}"
+KINE_FIPS_IMAGE="kine-fips:${KINE_VERSION}"
+KONNECTIVITY_FIPS_IMAGE="konnectivity-server-fips:${KONNECTIVITY_VERSION}"
+KUBERNETES_FIPS_IMAGE="kubernetes-fips:${KUBERNETES_VERSION}"
+echo "Building docker image: ${ETCD_FIPS_IMAGE}"
+docker buildx build --platform="${TARGET_OS_ARCH}" -f Dockerfile.etcd -t "${ETCD_FIPS_IMAGE}" --build-arg ETCD_VERSION="${ETCD_VERSION}" .
+echo "Building docker image: ${HELM_FIPS_IMAGE}"
+docker buildx build --platform="${TARGET_OS_ARCH}" -f Dockerfile.helm -t "${HELM_FIPS_IMAGE}" --build-arg HELM_VERSION="${HELM_VERSION}" .
+echo "Building docker image: ${KINE_FIPS_IMAGE}"
+docker buildx build --platform="${TARGET_OS_ARCH}" -f Dockerfile.kine -t "${KINE_FIPS_IMAGE}" --build-arg KINE_VERSION="${KINE_VERSION}" .
+echo "Building docker image: ${KONNECTIVITY_FIPS_IMAGE}"
+docker buildx build --platform="${TARGET_OS_ARCH}" -f Dockerfile.konnectivity-server -t "${KONNECTIVITY_FIPS_IMAGE}" --build-arg KONNECTIVITY_SERVER_VERSION="${KONNECTIVITY_VERSION}" .
+echo "Building docker image: ${KUBERNETES_FIPS_IMAGE}"
+docker buildx build --platform="${TARGET_OS_ARCH}" -f Dockerfile.k8s-full \
+  -t "${KUBERNETES_FIPS_IMAGE}" \
+  --build-arg KUBERNETES_VERSION="${KUBERNETES_VERSION}" \
+  --build-arg CNI_PLUGINS_VERSION="${CNI_BINARIES_VERSION}" \
+  --build-arg RUNC_VERSION="${RUNC_VERSION}" \
+  --build-arg CONTAINERD_VERSION="${CONTAINERD_VERSION}" .
+cd ../
 
 echo "Creating temporary kubernetes container for linux/amd64..."
-CONTAINER_ID=$(docker create --platform ${TARGET_OS_ARCH} "$IMAGE_NAME")
+CONTAINER_ID=$(docker create --platform ${TARGET_OS_ARCH} "${KUBERNETES_FIPS_IMAGE}")
 
 
 trap 'cleanup $CONTAINER_ID' EXIT
@@ -167,10 +187,10 @@ fi
 # remove node binaries, keep them in tar archive only
 cp "kubernetes-${KUBERNETES_VERSION}-${TARGET_ARCH}-fips.tar.gz" $OUTPUT_DIR
 rm -r $OUTPUT_DIR/cni
-rm $OUTPUT_DIR/containerd $OUTPUT_DIR/containerd-shim-runc-v2 $OUTPUT_DIR/containerd-stress $OUTPUT_DIR/ctr $OUTPUT_DIR/kubeadm $OUTPUT_DIR/kubectl $OUTPUT_DIR/kubelet $OUTPUT_DIR/runc
+rm $OUTPUT_DIR/containerd $OUTPUT_DIR/containerd-shim-runc-v2 $OUTPUT_DIR/ctr $OUTPUT_DIR/kubeadm $OUTPUT_DIR/kubectl $OUTPUT_DIR/kubelet $OUTPUT_DIR/runc
 
 # copy etcd binaries
-ETCD_CONTAINER_ID=$(docker create --platform ${TARGET_OS_ARCH} "ghcr.io/loft-sh/etcd-fips:${ETCD_VERSION}" true)
+ETCD_CONTAINER_ID=$(docker create --platform ${TARGET_OS_ARCH} "${ETCD_FIPS_IMAGE}" true)
 trap 'cleanup $ETCD_CONTAINER_ID' EXIT
 if docker cp "$ETCD_CONTAINER_ID:/bin/etcd" "$OUTPUT_DIR/etcd"; then
   echo "copied etcd to $OUTPUT_DIR/etcd"
@@ -188,7 +208,7 @@ else
 fi
 
 # copy helm binary
-HELM_CONTAINER_ID=$(docker create --platform ${TARGET_OS_ARCH} "ghcr.io/loft-sh/helm-fips:${HELM_VERSION}" true)
+HELM_CONTAINER_ID=$(docker create --platform ${TARGET_OS_ARCH} "${HELM_FIPS_IMAGE}" true)
 trap 'cleanup $HELM_CONTAINER_ID' EXIT
 if docker cp "$HELM_CONTAINER_ID:/usr/local/bin/helm" "$OUTPUT_DIR/helm"; then
   echo "copied helm to $OUTPUT_DIR/helm"
@@ -199,7 +219,7 @@ else
 fi
 
 # copy kine binary
-KINE_CONTAINER_ID=$(docker create --platform ${TARGET_OS_ARCH} "ghcr.io/loft-sh/kine-fips:${KINE_VERSION}" true)
+KINE_CONTAINER_ID=$(docker create --platform ${TARGET_OS_ARCH} "${KINE_FIPS_IMAGE}" true)
 trap 'cleanup $KINE_CONTAINER_ID' EXIT
 if docker cp "$KINE_CONTAINER_ID:/bin/kine" "$OUTPUT_DIR/kine"; then
   echo "copied kine to $OUTPUT_DIR/kine"
@@ -210,7 +230,7 @@ else
 fi
 
 # copy konnectivity-server binary
-KONNECTIVITY_CONTAINER_ID=$(docker create --platform ${TARGET_OS_ARCH} "ghcr.io/loft-sh/konnectivity-server-fips:${KONNECTIVITY_VERSION}" true)
+KONNECTIVITY_CONTAINER_ID=$(docker create --platform ${TARGET_OS_ARCH} "${KONNECTIVITY_FIPS_IMAGE}" true)
 trap 'cleanup $KONNECTIVITY_CONTAINER_ID' EXIT
 if docker cp "$KONNECTIVITY_CONTAINER_ID:/bin/konnectivity-server" "$OUTPUT_DIR/konnectivity-server"; then
   echo "copied konnectivity-server to $OUTPUT_DIR/konnectivity-server"
@@ -226,3 +246,7 @@ tar -zcf "kubernetes-${KUBERNETES_VERSION}-${TARGET_ARCH}-fips-full.tar.gz" "${O
 
 docker rm "$KONNECTIVITY_CONTAINER_ID" "$KINE_CONTAINER_ID" "$HELM_CONTAINER_ID" "$ETCD_CONTAINER_ID" "$CONTAINER_ID" || true
 rm -r $OUTPUT_DIR
+cat <<EOF > build-args.txt
+KUBERNETES_BASE_IMAGE="${KUBERNETES_FIPS_IMAGE}",ETCD_IMAGE="${ETCD_FIPS_IMAGE}",HELM_IMAGE="${HELM_FIPS_IMAGE}",KINE_IMAGE="${KINE_FIPS_IMAGE}",KONNECTIVITY_IMAGE="${KONNECTIVITY_FIPS_IMAGE}"
+EOF
+

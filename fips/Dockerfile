@@ -1,17 +1,17 @@
-ARG K8S_VERSION="local"
-ARG ETCD_VERSION="v3.5.17"
-ARG HELM_VERSION="v3.17.3"
-ARG KINE_VERSION="v0.13.14"
-ARG KONNECTIVITY_VERSION="v0.32.0"
+ARG KUBERNETES_BASE_IMAGE=""
+ARG ETCD_IMAGE=""
+ARG HELM_IMAGE=""
+ARG KINE_IMAGE=""
+ARG KONNECTIVITY_IMAGE=""
 
 LABEL maintainer="vCluster Labs <support@vcluster.com>"
 LABEL description="Kubernetes control plane components (apiserver, controller-manager, scheduler, etcd, konnectivity-server) and tar archives with node components"
 
-FROM kubernetes-fips:${K8S_VERSION} AS k8s-local
-FROM ghcr.io/loft-sh/etcd-fips:${ETCD_VERSION} AS etcd-fips
-FROM ghcr.io/loft-sh/helm-fips:${HELM_VERSION} AS helm-fips
-FROM ghcr.io/loft-sh/kine-fips:${KINE_VERSION} AS kine-fips
-FROM ghcr.io/loft-sh/konnectivity-server-fips:${KONNECTIVITY_VERSION} AS konnectivity-fips
+FROM ${KUBERNETES_BASE_IMAGE} AS k8s-local
+FROM ${ETCD_IMAGE} AS etcd-fips
+FROM ${HELM_IMAGE} AS helm-fips
+FROM ${KINE_IMAGE} AS kine-fips
+FROM ${KONNECTIVITY_IMAGE} AS konnectivity-fips
 
 # we use the distroless base-nossl debug image, as it contains
 # a basic shell, glibc and nothing else.
