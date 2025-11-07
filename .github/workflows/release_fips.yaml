@@ -34,6 +34,7 @@ jobs:
       - name: Get stable K8s releases
         id: get-releases
         run: |
+          set -euo pipefail
           MIN_VERSION=${{ inputs.kubernetes_minor_version }}
           MIN_VERSION=${MIN_VERSION:-33}
 
