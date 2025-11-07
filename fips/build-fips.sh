@@ -104,13 +104,6 @@ if [ -z "$CNI_BINARIES_VERSION" ]; then
   exit 1
 fi
 
-# Trim kubernetes patch version to check if there is a file with that name
-KUBERNETES_VERSION_TRIMMED=$(echo ${KUBERNETES_VERSION} | sed -E 's/^(v[0-9]+\.[0-9]+)\.[0-9]+$/\1/')
-if [ ! -f "./kubernetes-${KUBERNETES_VERSION_TRIMMED}" ]; then
-  echo "Error: kubernetes-${KUBERNETES_VERSION_TRIMMED} file does not exist"
-  exit 1
-fi
-
 
 # Create the directory for the binaries
 mkdir -p "${OUTPUT_DIR}"
