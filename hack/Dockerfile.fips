@@ -4,6 +4,9 @@ ARG HELM_VERSION="v3.17.3"
 ARG KINE_VERSION="v0.13.14"
 ARG KONNECTIVITY_VERSION="v0.32.0"
 
+LABEL maintainer="vCluster Labs <support@vcluster.com>"
+LABEL description="Kubernetes control plane components (apiserver, controller-manager, scheduler, etcd, konnectivity-server) and tar archives with node components"
+
 FROM kubernetes-fips:${K8S_VERSION} AS k8s-local
 FROM ghcr.io/loft-sh/etcd-fips:${ETCD_VERSION} AS etcd-fips
 FROM ghcr.io/loft-sh/helm-fips:${HELM_VERSION} AS helm-fips
@@ -16,6 +19,7 @@ FROM gcr.io/distroless/base-nossl:debug
 
 ARG K8S_VERSION="v1.33.0"
 
+# Must be aligned with https://github.com/loft-sh/kubernetes/blob/main/Dockerfile#L30-L33
 COPY --chown=kubernetes:kubernetes --from=k8s-local /kubernetes/kube-apiserver /kubernetes/kube-apiserver
 COPY --chown=kubernetes:kubernetes --from=k8s-local /kubernetes/kube-controller-manager /kubernetes/kube-controller-manager
 COPY --chown=kubernetes:kubernetes --from=k8s-local /kubernetes/kube-scheduler /kubernetes/kube-scheduler
