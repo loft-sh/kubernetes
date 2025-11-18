@@ -48,13 +48,13 @@ jobs:
         id: get-releases
         run: |
           set -euo pipefail
-          MIN_VERSION=${{ inputs.kubernetes_minor_version }}
+          MIN_VERSION=${{ github.event.inputs.kubernetes_minor_version }}
           MIN_VERSION=${MIN_VERSION:-28}
-          FORCE="${{ inputs.force }}"
+          FORCE="${{ github.event.inputs.force }}"
           FORCE=${FORCE:-false}
 
           # Get stable releases >= 1.MIN_VERSION where version file exists
-          MATRIX=$(curl -s "https://api.github.com/repos/kubernetes/kubernetes/releases?page=${{ inputs.page || 1 }}&per_page=${{ inputs.per_page || 50 }}" | \
+          MATRIX=$(curl -s "https://api.github.com/repos/kubernetes/kubernetes/releases?page=${{ github.event.inputs.page || 1 }}&per_page=${{ github.event.inputs.per_page || 50 }}" | \
             jq -r '.[] | select(.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$")) | .tag_name' | \
             sort -V | \
             awk -F'[.v]' -v min=$MIN_VERSION '$2==1 && $3>=min' | \
@@ -107,7 +107,7 @@ jobs:
           # Setup GitHub CLI
           gh auth login --with-token <<< "${{ secrets.GITHUB_TOKEN }}"
           
-          FORCE="${{ inputs.force }}"
+          FORCE="${{ github.event.inputs.force }}"
 
           cd fips
 
@@ -137,16 +137,8 @@ jobs:
 
             echo "Updated release for Kubernetes $VERSION"
           else
-            gh release create $VERSION \
-              --title "Kubernetes $VERSION" \
-              --notes-file "./kubernetes-$VERSION.txt" \
-              --repo ${{ github.repository }} \
-              "./kubernetes-$VERSION-amd64-fips.tar.gz" \
-              "./kubernetes-$VERSION-arm64-fips.tar.gz" \
-              "./kubernetes-$VERSION-amd64-fips-full.tar.gz" \
-              "./kubernetes-$VERSION-arm64-fips-full.tar.gz"
-      
-            echo "Released Kubernetes $VERSION"
+            echo "Release $VERSION does not exist"
+            exit 1
           fi
 
           # Remove the full archives
@@ -160,7 +152,28 @@ jobs:
         id: build-args
         run: echo "args=$(cat ./fips/build-args.txt)" >> $GITHUB_OUTPUT
 
-      - name: Build and push node image
+      - name: Build and push k8s full image
+        id: pushfull
+        uses: docker/build-push-action@v6
+        with:
+          platforms: linux/amd64,linux/arm64
+          context: ./fips
+          push: true
+          file: Dockerfile.full
+          sbom: true
+          provenance: true
+          tags: ghcr.io/loft-sh/kubernetes:${{ matrix.version }}-fips-full
+          build-args: ${{ steps.build-args.outputs.args }}
+
+      - name: Attest k8s full image
+        uses: actions/attest-build-provenance@v2
+        id: attestfull
+        with:
+          subject-name: ghcr.io/loft-sh/kubernetes
+          subject-digest: ${{ steps.pushfull.outputs.digest }}
+          push-to-registry: true
+
+      - name: Build and push k8s image
         id: push
         uses: docker/build-push-action@v6
         with:
@@ -170,10 +183,11 @@ jobs:
           file: Dockerfile
           sbom: true
           provenance: true
-          tags: ghcr.io/loft-sh/kubernetes:${{ matrix.version }}-fips-full
-          build-args: ${{ steps.build-args.outputs.args }}
+          tags: ghcr.io/loft-sh/kubernetes:${{ matrix.version }}-fips
+          build-args: |
+            KUBERNETES_VERSION=${{ matrix.version }}
 
-      - name: Attest
+      - name: Attest k8s image
         uses: actions/attest-build-provenance@v2
         id: attest
         with:

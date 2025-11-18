@@ -1,36 +1,50 @@
-ARG KUBERNETES_BASE_IMAGE=""
-ARG ETCD_IMAGE=""
-ARG HELM_IMAGE=""
-ARG KINE_IMAGE=""
-ARG KONNECTIVITY_IMAGE=""
+ARG GO_VERSION=1.24
+FROM docker.io/library/golang:${GO_VERSION}-bookworm AS build
 
-LABEL maintainer="vCluster Labs <support@vcluster.com>"
-LABEL description="Kubernetes control plane components (apiserver, controller-manager, scheduler, etcd, konnectivity-server) and tar archives with node components"
+ARG KUBERNETES_VERSION=1.33.0
+ARG KUBERNETES_BINS="kube-apiserver kube-controller-manager kube-scheduler"
 
-FROM ${KUBERNETES_BASE_IMAGE} AS k8s-local
-FROM ${ETCD_IMAGE} AS etcd-fips
-FROM ${HELM_IMAGE} AS helm-fips
-FROM ${KINE_IMAGE} AS kine-fips
-FROM ${KONNECTIVITY_IMAGE} AS konnectivity-fips
+RUN apt-get update -y && \
+  apt-get install -y --no-install-recommends \
+  git \
+  rsync \
+  grep \
+  coreutils \
+  gcc;
 
-# we use the distroless base-nossl debug image, as it contains
-# a basic shell, glibc and nothing else.
+RUN  mkdir -p "$GOPATH/src/github.com/kubernetes/kubernetes"; \
+  git -c advice.detachedHead=false clone -b "v$KUBERNETES_VERSION" --depth=1 https://github.com/kubernetes/kubernetes.git "$GOPATH/src/github.com/kubernetes/kubernetes"
+
+WORKDIR /go/src/github.com/kubernetes/kubernetes
+
+ARG BUILD_GO_TAGS="providerless"
+ARG BUILD_GO_FLAGS="-v"
+ARG BUILD_GO_LDFLAGS_EXTRA
+
+COPY base-images/go-assert-fips.sh /
+
+RUN \
+  set -ex; \
+  export GOPATH=/go; \
+  commands="${KUBERNETES_BINS}"; \
+  # Ensure that all of the binaries are built with CGO \
+  export CGO_ENABLED=1; \
+  export KUBE_CGO_OVERRIDES="$commands"; \
+  export GOFIPS140=v1.0.0; \
+  mkdir /out; \
+  SOURCE_DATE_EPOCH="$(git log -1 --pretty=%ct || date -u +%s)"; \
+  export SOURCE_DATE_EPOCH; \
+  export FORCE_HOST_GO=y; \
+  export KUBE_VERBOSE=9; \
+  export KUBE_GIT_VERSION="v$KUBERNETES_VERSION+loft-fips"; \
+  export KUBE_GIT_TREE_STATE="clean"; \
+  for cmd in $commands; do \
+  make GOFLAGS="${BUILD_GO_FLAGS} -tags=${BUILD_GO_TAGS}" GOLDFLAGS="${BUILD_GO_LDFLAGS_EXTRA}" WHAT="cmd/$cmd" DBG=1; \
+  mv /go/src/github.com/kubernetes/kubernetes/_output/local/bin/*/*/"$cmd" /out/; \
+  /go-assert-fips.sh /out/$cmd; \
+  done
+
 FROM gcr.io/distroless/base-nossl:debug
-
-ARG K8S_VERSION="v1.33.0"
-
+COPY --from=build out/* /usr/local/bin/
 # Must be aligned with https://github.com/loft-sh/kubernetes/blob/main/Dockerfile#L30-L33
-COPY --chown=kubernetes:kubernetes --from=k8s-local /kubernetes/kube-apiserver /kubernetes/kube-apiserver
-COPY --chown=kubernetes:kubernetes --from=k8s-local /kubernetes/kube-controller-manager /kubernetes/kube-controller-manager
-COPY --chown=kubernetes:kubernetes --from=k8s-local /kubernetes/kube-scheduler /kubernetes/kube-scheduler
-COPY --chown=kubernetes:kubernetes --from=helm-fips /usr/local/bin/helm /kubernetes/helm
-COPY --chown=kubernetes:kubernetes --from=etcd-fips /bin/etcd /kubernetes/etcd
-COPY --chown=kubernetes:kubernetes --from=etcd-fips /bin/etcdctl /kubernetes/etcdctl
-COPY --chown=kubernetes:kubernetes --from=kine-fips /bin/kine /kubernetes/kine
-COPY --chown=kubernetes:kubernetes --from=konnectivity-fips /bin/konnectivity-server /kubernetes/konnectivity-server
-COPY --chown=kubernetes:kubernetes ./kubernetes-${K8S_VERSION}-amd64-fips.tar.gz /kubernetes/kubernetes-${K8S_VERSION}-amd64.tar.gz
-COPY --chown=kubernetes:kubernetes ./kubernetes-${K8S_VERSION}-arm64-fips.tar.gz /kubernetes/kubernetes-${K8S_VERSION}-arm64.tar.gz
-
-# Set up the container
-WORKDIR /
-USER kubernetes
+COPY --from=build out/* /kubernetes/
