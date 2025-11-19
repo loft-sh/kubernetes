@@ -158,7 +158,8 @@ jobs:
           sbom: true
           provenance: true
           tags: ghcr.io/loft-sh/kubernetes:${{ matrix.version }}-fips-full
-          build-args: ${{ steps.build-args.outputs.args }}
+          build-args: |
+            ${{ steps.build-args.outputs.args }}
 
       - name: Attest k8s full image
         uses: actions/attest-build-provenance@v2
