@@ -117,15 +117,15 @@ KINE_FIPS_IMAGE="kine-fips:${KINE_VERSION}"
 KONNECTIVITY_FIPS_IMAGE="konnectivity-server-fips:${KONNECTIVITY_VERSION}"
 KUBERNETES_FIPS_IMAGE="kubernetes-fips:${KUBERNETES_VERSION}"
 echo "Building docker image: ${ETCD_FIPS_IMAGE}"
-docker buildx build --platform="${TARGET_OS_ARCH}" -f Dockerfile.etcd -t "${ETCD_FIPS_IMAGE}" --build-arg ETCD_VERSION="${ETCD_VERSION}" .
+docker buildx build --load --platform="${TARGET_OS_ARCH}" -f Dockerfile.etcd -t "${ETCD_FIPS_IMAGE}" --build-arg ETCD_VERSION="${ETCD_VERSION}" .
 echo "Building docker image: ${HELM_FIPS_IMAGE}"
-docker buildx build --platform="${TARGET_OS_ARCH}" -f Dockerfile.helm -t "${HELM_FIPS_IMAGE}" --build-arg HELM_VERSION="${HELM_VERSION}" .
+docker buildx build --load --platform="${TARGET_OS_ARCH}" -f Dockerfile.helm -t "${HELM_FIPS_IMAGE}" --build-arg HELM_VERSION="${HELM_VERSION}" .
 echo "Building docker image: ${KINE_FIPS_IMAGE}"
-docker buildx build --platform="${TARGET_OS_ARCH}" -f Dockerfile.kine -t "${KINE_FIPS_IMAGE}" --build-arg KINE_VERSION="${KINE_VERSION}" .
+docker buildx build --load --platform="${TARGET_OS_ARCH}" -f Dockerfile.kine -t "${KINE_FIPS_IMAGE}" --build-arg KINE_VERSION="${KINE_VERSION}" .
 echo "Building docker image: ${KONNECTIVITY_FIPS_IMAGE}"
-docker buildx build --platform="${TARGET_OS_ARCH}" -f Dockerfile.konnectivity-server -t "${KONNECTIVITY_FIPS_IMAGE}" --build-arg KONNECTIVITY_SERVER_VERSION="${KONNECTIVITY_VERSION}" .
+docker buildx build --load --platform="${TARGET_OS_ARCH}" -f Dockerfile.konnectivity-server -t "${KONNECTIVITY_FIPS_IMAGE}" --build-arg KONNECTIVITY_SERVER_VERSION="${KONNECTIVITY_VERSION}" .
 echo "Building docker image: ${KUBERNETES_FIPS_IMAGE}"
-docker buildx build --platform="${TARGET_OS_ARCH}" -f Dockerfile.k8s-full \
+docker buildx build --load --platform="${TARGET_OS_ARCH}" -f Dockerfile.k8s-full \
   -t "${KUBERNETES_FIPS_IMAGE}" \
   --build-arg KUBERNETES_VERSION="${KUBERNETES_VERSION}" \
   --build-arg CNI_PLUGINS_VERSION="${CNI_BINARIES_VERSION}" \
