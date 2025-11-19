@@ -1,0 +1,36 @@
+ARG KUBERNETES_BASE_IMAGE=""
+ARG ETCD_IMAGE=""
+ARG HELM_IMAGE=""
+ARG KINE_IMAGE=""
+ARG KONNECTIVITY_IMAGE=""
+
+LABEL maintainer="vCluster Labs <support@vcluster.com>"
+LABEL description="Kubernetes control plane components (apiserver, controller-manager, scheduler, etcd, konnectivity-server) and tar archives with node components"
+
+FROM ${KUBERNETES_BASE_IMAGE} AS k8s-local
+FROM ${ETCD_IMAGE} AS etcd-fips
+FROM ${HELM_IMAGE} AS helm-fips
+FROM ${KINE_IMAGE} AS kine-fips
+FROM ${KONNECTIVITY_IMAGE} AS konnectivity-fips
+
+# we use the distroless base-nossl debug image, as it contains
+# a basic shell, glibc and nothing else.
+FROM gcr.io/distroless/base-nossl:debug
+
+ARG K8S_VERSION="v1.33.0"
+
+# Must be aligned with https://github.com/loft-sh/kubernetes/blob/main/Dockerfile#L30-L33
+COPY --chown=kubernetes:kubernetes --from=k8s-local /kubernetes/kube-apiserver /kubernetes/kube-apiserver
+COPY --chown=kubernetes:kubernetes --from=k8s-local /kubernetes/kube-controller-manager /kubernetes/kube-controller-manager
+COPY --chown=kubernetes:kubernetes --from=k8s-local /kubernetes/kube-scheduler /kubernetes/kube-scheduler
+COPY --chown=kubernetes:kubernetes --from=helm-fips /usr/local/bin/helm /kubernetes/helm
+COPY --chown=kubernetes:kubernetes --from=etcd-fips /bin/etcd /kubernetes/etcd
+COPY --chown=kubernetes:kubernetes --from=etcd-fips /bin/etcdctl /kubernetes/etcdctl
+COPY --chown=kubernetes:kubernetes --from=kine-fips /bin/kine /kubernetes/kine
+COPY --chown=kubernetes:kubernetes --from=konnectivity-fips /bin/konnectivity-server /kubernetes/konnectivity-server
+COPY --chown=kubernetes:kubernetes ./kubernetes-${K8S_VERSION}-amd64-fips.tar.gz /kubernetes/kubernetes-${K8S_VERSION}-amd64.tar.gz
+COPY --chown=kubernetes:kubernetes ./kubernetes-${K8S_VERSION}-arm64-fips.tar.gz /kubernetes/kubernetes-${K8S_VERSION}-arm64.tar.gz
+
+# Set up the container
+WORKDIR /
+USER kubernetes
