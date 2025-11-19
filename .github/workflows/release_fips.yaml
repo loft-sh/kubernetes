@@ -49,7 +49,7 @@ jobs:
         run: |
           set -euo pipefail
           MIN_VERSION=${{ github.event.inputs.kubernetes_minor_version }}
-          MIN_VERSION=${MIN_VERSION:-28}
+          MIN_VERSION=${MIN_VERSION:-33}
           FORCE="${{ github.event.inputs.force }}"
           FORCE=${FORCE:-false}
 
@@ -154,7 +154,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           context: ./fips
           push: true
-          file: Dockerfile.full
+          file: ./fips/Dockerfile.full
           sbom: true
           provenance: true
           tags: ghcr.io/loft-sh/kubernetes:${{ matrix.version }}-fips-full
@@ -175,7 +175,6 @@ jobs:
           platforms: linux/amd64,linux/arm64
           context: ./fips
           push: true
-          file: Dockerfile
           sbom: true
           provenance: true
           tags: ghcr.io/loft-sh/kubernetes:${{ matrix.version }}-fips
