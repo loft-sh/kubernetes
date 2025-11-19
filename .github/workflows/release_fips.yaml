@@ -130,11 +130,6 @@ jobs:
               --repo ${{ github.repository }} \
               --clobber
 
-            # Edit the release notes to include the component versions
-            gh release edit "$VERSION" \
-              --notes-file "./kubernetes-$VERSION.txt" \
-              --repo ${{ github.repository }}
-
             echo "Updated release for Kubernetes $VERSION"
           else
             echo "Release $VERSION does not exist"
