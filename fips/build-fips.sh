@@ -1,36 +1,16 @@
 #!/bin/bash
 set -e  # Exit on error
 
-# Default versions
-KUBERNETES_VERSION=""
-# Configuration
+# Read from environment variables
+KUBERNETES_VERSION="${KUBERNETES_VERSION:-}"
 RELEASE_DIR="/kubernetes"
-
-VERSIONS_FILE=""
-TARGET_ARCH="amd64"
-
-# Parse command line arguments
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --kubernetes-version)
-      KUBERNETES_VERSION="$2"
-      shift 2
-      ;;
-    --target-arch)
-      TARGET_ARCH="$2"
-      shift 2
-      ;;
-    --versions-file)
-      VERSIONS_FILE="$2"
-      shift 2
-      ;;
-    *)
-      echo "Unknown argument: $1"
-      echo "Usage: $0 --kubernetes-version <version>"
-      exit 1
-      ;;
-  esac
-done
+TARGET_ARCH="${TARGET_ARCH:-amd64}"
+PAUSE_IMAGE_VERSION="${PAUSE_IMAGE_VERSION:-}"
+KUBERNETES_FIPS_IMAGE="${KUBERNETES_FIPS_IMAGE:-}"
+ETCD_FIPS_IMAGE="${ETCD_FIPS_IMAGE:-}"
+KONNECTIVITY_FIPS_IMAGE="${KONNECTIVITY_FIPS_IMAGE:-}"
+HELM_FIPS_IMAGE="${HELM_FIPS_IMAGE:-}"
+KINE_FIPS_IMAGE="${KINE_FIPS_IMAGE:-}"
 
 OUTPUT_DIR="./release"
 TARGET_OS_ARCH="linux/${TARGET_ARCH}"
@@ -44,63 +24,32 @@ cleanup() {
 
 # Kubernetes version is required
 if [ -z "$KUBERNETES_VERSION" ]; then
-  echo "Error: --kubernetes-version is required"
-  echo "Usage: $0 --kubernetes-version <version>"
+  echo "Error: KUBERNETES_VERSION is required"
   exit 1
 fi
 
 if [ -z "$TARGET_ARCH" ]; then
-  echo "Error: --target-arch is required"
-  echo "Usage: $0 --target-arch <version>"
+  echo "Error: TARGET_ARCH is required"
   exit 1
 fi
 
-
-if [ -z "$VERSIONS_FILE" ]; then
-  echo "Error: --versions-file is required"
-  echo "Usage: $0 --versions-file <path-to-versions-file>"
+if [ -z "$KUBERNETES_FIPS_IMAGE" ]; then
+  echo "Error: KUBERNETES_FIPS_IMAGE evn var not set"
   exit 1
 fi
 
-if [ ! -f "$VERSIONS_FILE" ]; then
-  echo "Error: $VERSIONS_FILE does not exist"
+if [ -z "$KINE_FIPS_IMAGE" ]; then
+  echo "Error: KINE_VERSION evn var not set"
   exit 1
 fi
 
-source "${VERSIONS_FILE}"
-
-if [ -z "$HELM_VERSION" ]; then
-  echo "Error: HELM_VERSION not found in $VERSIONS_FILE file"
-  exit 1
-fi
-
-if [ -z "$KINE_VERSION" ]; then
-  echo "Error: KINE_VERSION not found in $VERSIONS_FILE file"
-  exit 1
-fi
-
-if [ -z "$KONNECTIVITY_VERSION" ]; then
-  echo "Error: KONNECTIVITY_VERSION not found in $VERSIONS_FILE file"
+if [ -z "$KONNECTIVITY_FIPS_IMAGE" ]; then
+  echo "Error: KONNECTIVITY_VERSION evn var not set"
   exit 1
 fi
 
 if [ -z "$PAUSE_IMAGE_VERSION" ]; then
-  echo "Error: PAUSE_IMAGE_VERSION not found in $VERSIONS_FILE file"
-  exit 1
-fi
-
-if [ -z "$RUNC_VERSION" ]; then
-  echo "Error: RUNC_VERSION not found in $VERSIONS_FILE file"
-  exit 1
-fi
-
-if [ -z "$CONTAINERD_VERSION" ]; then
-  echo "Error: CONTAINERD_VERSION not found in $VERSIONS_FILE file"
-  exit 1
-fi
-
-if [ -z "$CNI_BINARIES_VERSION" ]; then
-  echo "Error: CNI_BINARIES_VERSION not found in $VERSIONS_FILE file"
+  echo "Error: PAUSE_IMAGE_VERSION evn var not set"
   exit 1
 fi
 
@@ -110,32 +59,8 @@ mkdir -p "${OUTPUT_DIR}"
 
 
 # pulling control plane components for $TARGET_ARCH (linux/amd64 or linux/arm64)
-cd base-images
-ETCD_FIPS_IMAGE="etcd-fips:${ETCD_VERSION}"
-HELM_FIPS_IMAGE="helm-fips:${HELM_VERSION}"
-KINE_FIPS_IMAGE="kine-fips:${KINE_VERSION}"
-KONNECTIVITY_FIPS_IMAGE="konnectivity-server-fips:${KONNECTIVITY_VERSION}"
-KUBERNETES_FIPS_IMAGE="kubernetes-fips:${KUBERNETES_VERSION}"
-echo "Building docker image: ${ETCD_FIPS_IMAGE}"
-docker buildx build --load --platform="${TARGET_OS_ARCH}" -f Dockerfile.etcd -t "${ETCD_FIPS_IMAGE}" --build-arg ETCD_VERSION="${ETCD_VERSION}" .
-echo "Building docker image: ${HELM_FIPS_IMAGE}"
-docker buildx build --load --platform="${TARGET_OS_ARCH}" -f Dockerfile.helm -t "${HELM_FIPS_IMAGE}" --build-arg HELM_VERSION="${HELM_VERSION}" .
-echo "Building docker image: ${KINE_FIPS_IMAGE}"
-docker buildx build --load --platform="${TARGET_OS_ARCH}" -f Dockerfile.kine -t "${KINE_FIPS_IMAGE}" --build-arg KINE_VERSION="${KINE_VERSION}" .
-echo "Building docker image: ${KONNECTIVITY_FIPS_IMAGE}"
-docker buildx build --load --platform="${TARGET_OS_ARCH}" -f Dockerfile.konnectivity-server -t "${KONNECTIVITY_FIPS_IMAGE}" --build-arg KONNECTIVITY_SERVER_VERSION="${KONNECTIVITY_VERSION}" .
-echo "Building docker image: ${KUBERNETES_FIPS_IMAGE}"
-docker buildx build --load --platform="${TARGET_OS_ARCH}" -f Dockerfile.k8s-full \
-  -t "${KUBERNETES_FIPS_IMAGE}" \
-  --build-arg KUBERNETES_VERSION="${KUBERNETES_VERSION}" \
-  --build-arg CNI_PLUGINS_VERSION="${CNI_BINARIES_VERSION}" \
-  --build-arg RUNC_VERSION="${RUNC_VERSION}" \
-  --build-arg CONTAINERD_VERSION="${CONTAINERD_VERSION}" .
-cd ../
-
 echo "Creating temporary kubernetes container for linux/amd64..."
 CONTAINER_ID=$(docker create --platform ${TARGET_OS_ARCH} "${KUBERNETES_FIPS_IMAGE}")
-
 
 trap 'cleanup $CONTAINER_ID' EXIT
 
@@ -194,7 +119,6 @@ fi
 
 if docker cp "$ETCD_CONTAINER_ID:/bin/etcdctl" "$OUTPUT_DIR/etcdctl"; then
   echo "copied etcdctl to $OUTPUT_DIR/etcdctl"
-  docker rm "$ETCD_CONTAINER_ID"
 else
   echo "Error: Failed to copy files from etcdctl container"
   exit 1
@@ -205,7 +129,6 @@ HELM_CONTAINER_ID=$(docker create --platform ${TARGET_OS_ARCH} "${HELM_FIPS_IMAG
 trap 'cleanup $HELM_CONTAINER_ID' EXIT
 if docker cp "$HELM_CONTAINER_ID:/usr/local/bin/helm" "$OUTPUT_DIR/helm"; then
   echo "copied helm to $OUTPUT_DIR/helm"
-  docker rm "$HELM_CONTAINER_ID"
 else
   echo "Error: Failed to copy files from helm container"
   exit 1
@@ -216,7 +139,6 @@ KINE_CONTAINER_ID=$(docker create --platform ${TARGET_OS_ARCH} "${KINE_FIPS_IMAG
 trap 'cleanup $KINE_CONTAINER_ID' EXIT
 if docker cp "$KINE_CONTAINER_ID:/bin/kine" "$OUTPUT_DIR/kine"; then
   echo "copied kine to $OUTPUT_DIR/kine"
-  docker rm "$KINE_CONTAINER_ID"
 else
   echo "Error: Failed to copy files from kine container"
   exit 1
@@ -227,7 +149,6 @@ KONNECTIVITY_CONTAINER_ID=$(docker create --platform ${TARGET_OS_ARCH} "${KONNEC
 trap 'cleanup $KONNECTIVITY_CONTAINER_ID' EXIT
 if docker cp "$KONNECTIVITY_CONTAINER_ID:/bin/konnectivity-server" "$OUTPUT_DIR/konnectivity-server"; then
   echo "copied konnectivity-server to $OUTPUT_DIR/konnectivity-server"
-  docker rm "$KONNECTIVITY_CONTAINER_ID"
 else
   echo "Error: Failed to copy files from konnectivity-server container"
   exit 1
@@ -239,11 +160,3 @@ tar -zcf "kubernetes-${KUBERNETES_VERSION}-${TARGET_ARCH}-fips-full.tar.gz" "${O
 
 docker rm "$KONNECTIVITY_CONTAINER_ID" "$KINE_CONTAINER_ID" "$HELM_CONTAINER_ID" "$ETCD_CONTAINER_ID" "$CONTAINER_ID" || true
 rm -r $OUTPUT_DIR
-cat <<EOF > build-args.txt
-KUBERNETES_BASE_IMAGE=${KUBERNETES_FIPS_IMAGE}
-ETCD_IMAGE=${ETCD_FIPS_IMAGE}
-HELM_IMAGE=${HELM_FIPS_IMAGE}
-KINE_IMAGE=${KINE_FIPS_IMAGE}
-KONNECTIVITY_IMAGE=${KONNECTIVITY_FIPS_IMAGE}
-EOF
-

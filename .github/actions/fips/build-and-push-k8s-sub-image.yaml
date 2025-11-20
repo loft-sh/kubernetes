@@ -1,0 +1,111 @@
+name: Build FIPS kubernetes sub image
+run-name: Build and push k8s sub image ${{ inputs.k8s-version }}
+
+on:
+  workflow_call:
+    inputs:
+      base_ref:
+        required: false
+        type: string
+        default: 'main'
+        description: 'Base reference for vCluster-PRO and vcluster-OSS checkout'
+      k8s-version:
+        required: true
+        type: string
+        description: 'Kubernetes version, e.g. v1.33.0'
+      k8s-minor-version:
+        required: true
+        type: string
+        description: 'Kubernetes minor version, e.g. v1.33'
+    outputs:
+      image:
+        description: "name of the built image (in format registry/repository/image:tag)"
+        value: ${{ jobs.build-image.outputs.image }}
+
+jobs:
+  build-image:
+    outputs:
+      image: ${{ steps.image-name.outputs.image }}
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      packages: write
+      contents: read
+      attestations: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.base_ref }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image name
+        id: image-name
+        run: |
+          set -x
+          echo "image=ghcr.io/loft-sh/kubernetes-node-fips:${{ inputs.k8s-version }}" >> "$GITHUB_OUTPUT
+
+      - name: Read build args
+        id: read-build-args
+        run: |
+          set -x
+          cniVersion=$(./hack/parse-version.sh CNI_PLUGINS_VERSION ./hack/kubernetes-${{ inputs.k8s-minor-version })
+          runcVersion=$(./hack/parse-version.sh RUNC_VERSION ./hack/kubernetes-${{ inputs.k8s-minor-version })
+          containerdVersion=$(./hack/parse-version.sh CONTAINERD_VERSION ./hack/kubernetes-${{ inputs.k8s-minor-version })
+          
+          echo "cniPluginsVersion=${cniVersion}" >> "$GITHUB_OUTPUT"
+          echo "runcVersion=${runcVersion}" >> "$GITHUB_OUTPUT"
+          echo "containerdVersion=${containerdVersion}" >> "$GITHUB_OUTPUT"
+
+      - name: Check if image exists
+        id: image-exists
+        continue-on-error: true
+        run: |
+          docker manifest inspect "${{ steps.image-name.outputs.image }}"
+
+      - name: Image already exists
+        if: ${{ steps.image-exists.outcome == 'success' }}
+        run: |
+          echo "Image ${{ steps.image-name.outputs.image }} already exists"
+
+      - name: Read build args
+        id: build-args
+        run: |
+          echo "args<<EOF" >> $GITHUB_OUTPUT
+          cat ./hack/kubernetes-${{ inputs.k8s-minor-version }} >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Build and push image
+        id: push
+        if: ${{ steps.image-exists.outcome == 'failure' }}
+        uses: docker/build-push-action@v6
+        with:
+          platforms: linux/amd64,linux/arm64
+          push: true
+          file: ./fips/base-images/Dockerfile.k8s-full
+          sbom: true
+          provenance: true
+          tags: ${{ steps.image-name.outputs.image }}}
+          build-args: |
+            CNI_PLUGINS_VERSION=${{ steps.read-build-args.outputs.cniPluginsVersion }}
+            RUNC_VERSION=${{ steps.read-build-args.outputs.runcVersion }}
+            CONTAINERD_VERSION=${{ steps.read-build-args.outputs.containerdVersion }}
+            KUBERNETES_VERSION=${{ inputs.k8s-version }}
+
+      - name: Attest k8s image
+        uses: actions/attest-build-provenance@v2
+        if: ${{ steps.image-exists.outcome == 'failure' }}
+        id: attest
+        with:
+          subject-name: ghcr.io/loft-sh/kubernetes-node-fips
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
