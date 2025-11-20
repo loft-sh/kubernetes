@@ -1,6 +1,9 @@
 ARG GO_VERSION=1.24
 FROM docker.io/library/golang:${GO_VERSION}-bookworm AS build
 
+LABEL maintainer="vCluster Labs <support@vcluster.com>"
+LABEL description="Kubernetes control plane components (apiserver, controller-manager, scheduler)"
+
 ARG KUBERNETES_VERSION=1.33.0
 ARG KUBERNETES_BINS="kube-apiserver kube-controller-manager kube-scheduler"
 
