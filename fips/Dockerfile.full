@@ -4,9 +4,6 @@ ARG HELM_IMAGE=""
 ARG KINE_IMAGE=""
 ARG KONNECTIVITY_IMAGE=""
 
-LABEL maintainer="vCluster Labs <support@vcluster.com>"
-LABEL description="Kubernetes control plane components (apiserver, controller-manager, scheduler, etcd, konnectivity-server) and tar archives with node components"
-
 FROM ${KUBERNETES_BASE_IMAGE} AS k8s-local
 FROM ${ETCD_IMAGE} AS etcd-fips
 FROM ${HELM_IMAGE} AS helm-fips
@@ -16,6 +13,9 @@ FROM ${KONNECTIVITY_IMAGE} AS konnectivity-fips
 # we use the distroless base-nossl debug image, as it contains
 # a basic shell, glibc and nothing else.
 FROM gcr.io/distroless/base-nossl:debug
+
+LABEL maintainer="vCluster Labs <support@vcluster.com>"
+LABEL description="Kubernetes control plane components (apiserver, controller-manager, scheduler, etcd, konnectivity-server) and tar archives with node components"
 
 ARG K8S_VERSION="v1.33.0"
 

@@ -145,14 +145,16 @@ jobs:
 
       - name: Read build args
         id: build-args
-        run: echo "args=$(cat ./fips/build-args.txt)" >> $GITHUB_OUTPUT
+        run: |
+          echo "args<<EOF" >> $GITHUB_OUTPUT
+          cat ./fips/build-args.txt >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Build and push k8s full image
         id: pushfull
         uses: docker/build-push-action@v6
         with:
           platforms: linux/amd64,linux/arm64
-          context: ./fips
           push: true
           file: ./fips/Dockerfile.full
           sbom: true
