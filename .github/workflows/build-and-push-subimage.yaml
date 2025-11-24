@@ -65,7 +65,7 @@ jobs:
         id: read-image-tag
         run: |
           set -x
-          tag=$(./hack/parse-version.sh ${{ inputs.component_name }} ./hack/kubernetes-${{ inputs.k8s-minor-version })
+          tag=$(./hack/parse-version.sh ${{ inputs.component_name }} ./hack/kubernetes-${{ inputs.k8s-minor-version }})
           echo "set image to ${{ inputs.image_name }}:${tag}"
           echo "image=${{ inputs.image_name }}:${tag}" >> "$GITHUB_OUTPUT"
           echo "tag=${tag}" >> "$GITHUB_OUTPUT"
