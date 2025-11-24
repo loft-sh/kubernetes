@@ -89,6 +89,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           file: ${{ inputs.dockerfile_path }}
+          context: ./fips/base-images
           sbom: true
           provenance: true
           tags: ${{ steps.read-image-tag.outputs.image }}
