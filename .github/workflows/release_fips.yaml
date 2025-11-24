@@ -84,110 +84,16 @@ jobs:
 
   build-k8s-versions:
     needs: generate-matrix
-    runs-on: ubuntu-latest
+    uses: ./.github/workflows/build-fips-for-version.yaml
     strategy:
       matrix: ${{ fromJson(needs.generate-matrix.outputs.matrix) }}
       fail-fast: false
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    with:
+      k8s-version: ${{ matrix.version }}
+    permissions:
+      id-token: write
+      packages: write
+      contents: read
+      attestations: write
+    secrets: inherit  # Pass all secrets to the reusable workflow
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build kubernetes FIPS ${{ matrix.version }}
-        run: |
-          # Setup GitHub CLI
-          gh auth login --with-token <<< "${{ secrets.GITHUB_TOKEN }}"
-          
-          FORCE="${{ github.event.inputs.force }}"
-
-          cd fips
-
-          VERSION=${{ matrix.version }}
-          KUBERNETES_VERSION_TRIMMED=$(echo ${VERSION} | sed -E 's/^(v[0-9]+\.[0-9]+)\.[0-9]+$/\1/')
-          
-          echo "Building FIPS release for Kubernetes ${VERSION}.."
-      
-          # Download for amd64 and arm64
-          ./build-fips.sh --target-arch amd64 --kubernetes-version ${VERSION} --versions-file "../hack/kubernetes-${KUBERNETES_VERSION_TRIMMED}"       
-          ./build-fips.sh --target-arch arm64 --kubernetes-version ${VERSION} --versions-file "../hack/kubernetes-${KUBERNETES_VERSION_TRIMMED}"
-      
-          # Create a new release with the archives as assets
-          if gh release view $VERSION --repo ${{ github.repository }} &>/dev/null; then
-            gh release upload "$VERSION" \
-              "./kubernetes-$VERSION-amd64-fips.tar.gz" \
-              "./kubernetes-$VERSION-arm64-fips.tar.gz" \
-              "./kubernetes-$VERSION-amd64-fips-full.tar.gz" \
-              "./kubernetes-$VERSION-arm64-fips-full.tar.gz" \
-              --repo ${{ github.repository }} \
-              --clobber
-
-            echo "Updated release for Kubernetes $VERSION"
-          else
-            echo "Release $VERSION does not exist"
-            exit 1
-          fi
-
-          # Remove the full archives
-          rm -f "./kubernetes-$VERSION-amd64-fips-full.tar.gz"
-          rm -f "./kubernetes-$VERSION-arm64-fips-full.tar.gz"
-
-          # Remove the node archives
-          rm -f "./kubernetes-*.tar.gz"
-
-      - name: Read build args
-        id: build-args
-        run: |
-          echo "args<<EOF" >> $GITHUB_OUTPUT
-          cat ./fips/build-args.txt >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
-      - name: Build and push k8s full image
-        id: pushfull
-        uses: docker/build-push-action@v6
-        with:
-          platforms: linux/amd64,linux/arm64
-          push: true
-          file: ./fips/Dockerfile.full
-          sbom: true
-          provenance: true
-          tags: ghcr.io/loft-sh/kubernetes:${{ matrix.version }}-fips-full
-          build-args: |
-            ${{ steps.build-args.outputs.args }}
-
-      - name: Attest k8s full image
-        uses: actions/attest-build-provenance@v2
-        id: attestfull
-        with:
-          subject-name: ghcr.io/loft-sh/kubernetes
-          subject-digest: ${{ steps.pushfull.outputs.digest }}
-          push-to-registry: true
-
-      - name: Build and push k8s image
-        id: push
-        uses: docker/build-push-action@v6
-        with:
-          platforms: linux/amd64,linux/arm64
-          context: ./fips
-          push: true
-          sbom: true
-          provenance: true
-          tags: ghcr.io/loft-sh/kubernetes:${{ matrix.version }}-fips
-          build-args: |
-            KUBERNETES_VERSION=${{ matrix.version }}
-
-      - name: Attest k8s image
-        uses: actions/attest-build-provenance@v2
-        id: attest
-        with:
-          subject-name: ghcr.io/loft-sh/kubernetes
-          subject-digest: ${{ steps.push.outputs.digest }}
-          push-to-registry: true

@@ -1,0 +1,226 @@
+name: Build K8s FIPS Version
+
+on:
+  workflow_call:
+    inputs:
+      k8s-version:
+        required: true
+        type: string
+
+run-name: Build K8s FIPS Version ${{ inputs.k8s-version }}
+
+jobs:
+  build-k8s-versions:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      packages: write
+      contents: read
+      attestations: write
+    outputs:
+      k8s-minor-version: ${{ steps.trim-version.outputs.version }}
+      k8s-version: ${{ steps.trim-version.outputs.fullVersion }}
+      pause-image-version: ${{ steps.trim-version.outputs.pauseImageVersion }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build kubernetes FIPS ${{ inputs.k8s-version }}
+        id: trim-version
+        run: |
+          VERSION=${{ inputs.k8s-version }}
+          KUBERNETES_VERSION_TRIMMED=$(echo ${VERSION} | sed -E 's/^(v[0-9]+\.[0-9]+)\.[0-9]+$/\1/')
+          
+          echo "version=$KUBERNETES_VERSION_TRIMMED" >> $GITHUB_OUTPUT
+          echo "fullVersion=$VERSION" >> $GITHUB_OUTPUT
+          PAUSE_IMAGE_VERSION=$(./parse-version.sh PAUSE_IMAGE_VERSION ./hack/kubernetes-$KUBERNETES_VERSION_TRIMMED)
+          echo "pauseImageVersion=$PAUSE_IMAGE_VERSION" >> $GITHUB_OUTPUT
+
+  build-k8s-nodes-image:
+    needs: build-k8s-versions
+    uses: ./.github/workflows/build-and-push-k8s-sub-image.yaml
+    with:
+      k8s-minor-version: ${{ needs.build-k8s-versions.outputs.k8s-minor-version }}
+      k8s-version: ${{ needs.build-k8s-versions.outputs.k8s-version }}
+
+  build-helm-image:
+    needs: build-k8s-versions
+    uses: ./.github/workflows/build-and-push-subimage.yaml
+    with:
+      image_name: ghcr.io/loft-sh/helm-fips
+      dockerfile_path: ./fips/base-images/Dockerfile.helm
+      k8s-minor-version: ${{ needs.build-k8s-versions.outputs.k8s-minor-version }}
+      component_name: HELM_VERSION
+
+  build-etcd-image:
+    needs: build-k8s-versions
+    uses: ./.github/workflows/build-and-push-subimage.yaml
+    with:
+      image_name: ghcr.io/loft-sh/etcd-fips
+      dockerfile_path: ./fips/base-images/Dockerfile.etcd
+      k8s-minor-version: ${{ needs.build-k8s-versions.outputs.k8s-minor-version }}
+      component_name: ETCD_VERSION
+
+  build-kine-image:
+    needs: build-k8s-versions
+    uses: ./.github/workflows/build-and-push-subimage.yaml
+    with:
+      image_name: ghcr.io/loft-sh/kine-fips
+      dockerfile_path: ./fips/base-images/Dockerfile.kine
+      k8s-minor-version: ${{ needs.build-k8s-versions.outputs.k8s-minor-version }}
+      component_name: KINE_VERSION
+
+  build-konnectivity-image:
+    needs: build-k8s-versions
+    uses: ./.github/workflows/build-and-push-subimage.yaml
+    with:
+      image_name: ghcr.io/loft-sh/konnectivity-server-fips
+      dockerfile_path: ./fips/base-images/Dockerfile.konnectivity-server
+      k8s-minor-version: ${{ needs.build-k8s-versions.outputs.k8s-minor-version }}
+      component_name: KONNECTIVITY_VERSION
+
+
+  # build k8s CP image for shared vCluster (apiserver, controller-manager, and scheduler only
+  build-k8s-fips-image:
+    needs: [build-k8s-nodes-image, build-k8s-versions]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push
+        id: push-fips
+        uses: docker/build-push-action@v6
+        with:
+          platforms: linux/amd64,linux/arm64
+          file: ./fips/Dockerfile
+          push: true
+          sbom: true
+          provenance: true
+          tags: ghcr.io/loft-sh/kubernetes:${{ needs.build-k8s-versions.outputs.k8s-version }}-fips
+          build-args: |
+            KUBERNETES_BASE_IMAGE=${{ needs.build-k8s-nodes-image.outputs.image }}
+      - name: Attest
+        uses: actions/attest-build-provenance@v2
+        id: attest
+        with:
+          subject-name: ghcr.io/loft-sh/kubernetes
+          subject-digest: ${{ steps.push-fips.outputs.digest }}
+          push-to-registry: true
+
+  build-amd64-tar-archives:
+    uses: ./.github/workflows/tar-archive-release-asset.yaml
+    needs:
+      - build-k8s-nodes-image
+      - build-k8s-versions
+      - build-etcd-image
+      - build-helm-image
+      - build-kine-image
+      - build-konnectivity-image
+    with:
+      k8s-version: ${{ inputs.k8s-version }}
+      arch: amd64
+      kubernetes-fips-image: ${{ needs.build-k8s-nodes-image.outputs.image }}
+      etcd-fips-image: ${{ needs.build-etcd-image.outputs.image }}
+      helm-fips-image: ${{ needs.build-helm-image.outputs.image }}
+      kine-fips-image: ${{ needs.build-kine-image.outputs.image }}
+      konnectivity-fips-image: ${{ needs.build-konnectivity-image.outputs.image }}
+      pause-image-version: ${{ needs.build-k8s-versions.outputs.pauseImageVersion }}
+
+  build-arm64-tar-archives:
+    uses: ./.github/workflows/tar-archive-release-asset.yaml
+    needs:
+      - build-k8s-nodes-image
+      - build-k8s-versions
+      - build-etcd-image
+      - build-helm-image
+      - build-kine-image
+      - build-konnectivity-image
+    with:
+      k8s-version: ${{ inputs.k8s-version }}
+      arch: arm64
+      kubernetes-fips-image: ${{ needs.build-k8s-nodes-image.outputs.image }}
+      etcd-fips-image: ${{ needs.build-etcd-image.outputs.image }}
+      helm-fips-image: ${{ needs.build-helm-image.outputs.image }}
+      kine-fips-image: ${{ needs.build-kine-image.outputs.image }}
+      konnectivity-fips-image: ${{ needs.build-konnectivity-image.outputs.image }}
+      pause-image-version: ${{ needs.build-k8s-versions.outputs.pauseImageVersion }}
+
+  build-k8s-fips-full-image:
+    needs:
+      - build-k8s-nodes-image
+      - build-k8s-versions
+      - build-etcd-image
+      - build-helm-image
+      - build-kine-image
+      - build-konnectivity-image
+      - build-amd64-tar-archives
+      - build-arm64-tar-archives
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to ghcr.io
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download tar archives from release
+        env:
+          KUBERNETES_VERSION: ${{ inputs.k8s-version }}
+        run: |
+          curl -fsSLk -o .fips/kubernetes-${KUBERNETES_VERSION}-amd64-fips.tar.gz https://github.com/loft-sh/kubernetes/releases/download/${KUBERNETES_VERSION}/kubernetes-${KUBERNETES_VERSION}-amd64-fips.tar.gz
+          curl -fsSLk -o .fips/kubernetes-${KUBERNETES_VERSION}-arm64-fips.tar.gz https://github.com/loft-sh/kubernetes/releases/download/${KUBERNETES_VERSION}/kubernetes-${KUBERNETES_VERSION}-arm64-fips.tar.gz
+
+      - name: Build and push
+        id: push-fips-full
+        uses: docker/build-push-action@v6
+        with:
+          platforms: linux/amd64,linux/arm64
+          context: .fips
+          file: ./fips/Dockerfile.full
+          push: true
+          sbom: true
+          provenance: true
+          tags: ghcr.io/loft-sh/kubernetes:${{ needs.build-k8s-versions.outputs.k8s-version }}-fips-full
+          build-args: |
+            KUBERNETES_BASE_IMAGE=${{ needs.build-k8s-nodes-image.outputs.image }}
+            ETCD_IMAGE=${{ needs.build-etcd-image.outputs.image }}
+            HELM_IMAGE=${{ needs.build-helm-image.outputs.image }}
+            KINE_IMAGE=${{ needs.build-kine-image.outputs.image }}
+            KONNECTIVITY_IMAGE=${{ needs.build-konnectivity-image.outputs.image }}
+            K8S_VERSION=${{ inputs.k8s-version }}
+
+      - name: Attest
+        uses: actions/attest-build-provenance@v2
+        id: attest
+        with:
+          subject-name: ghcr.io/loft-sh/kubernetes
+          subject-digest: ${{ steps.push-fips-full.outputs.digest }}
+          push-to-registry: true
+
+

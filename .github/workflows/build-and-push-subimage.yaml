@@ -1,0 +1,105 @@
+name: Build FIPS sub image
+run-name: Build and push ${{ inputs.image_name }}
+
+on:
+  workflow_call:
+    inputs:
+      image_name:
+        required: true
+        type: string
+        description: 'Full image name like ghcr.io/loft-sh/etcd-fips'
+      base_ref:
+        required: false
+        type: string
+        default: 'main'
+        description: 'Base reference for vCluster-PRO and vcluster-OSS checkout'
+      dockerfile_path:
+        required: true
+        type: string
+        description: 'Relative path to dockerfile (from the repository root dir)'
+      k8s-minor-version:
+        required: true
+        type: string
+        description: 'Kubernetes minor version, e.g. v1.33'
+      component_name:
+        required: true
+        type: string
+        description: 'Component name from ./hack/kubernetes-<version> file, e.g. ETCD_VERSION. This is needed to parse component version from the file'
+      force:
+        required: false
+        type: boolean
+        description: 'Force to build an image even if it exist already'
+        default: false
+    outputs:
+      image:
+        description: "name of the built image (in format registry/repository/image:tag)"
+        value: ${{ jobs.build-image.outputs.image }}
+
+jobs:
+  build-image:
+    runs-on: ubuntu-latest
+    outputs:
+      image: ${{ steps.read-image-tag.outputs.image }}
+    permissions:
+      id-token: write
+      packages: write
+      contents: read
+      attestations: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.base_ref }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Read image tag
+        id: read-image-tag
+        run: |
+          set -x
+          tag=$(./hack/parse-version.sh ${{ inputs.component_name }} ./hack/kubernetes-${{ inputs.k8s-minor-version })
+          echo "set image to ${{ inputs.image_name }}:${tag}"
+          echo "image=${{ inputs.image_name }}:${tag}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
+      - name: Check if image exists
+        id: image-exists
+        continue-on-error: true
+        run: |
+          docker manifest inspect "${{ steps.read-image-tag.outputs.image }}"
+
+      - name: Image already exists
+        if: ${{ steps.image-exists.outcome == 'success' }}
+        run: |
+          echo "Image ${{ steps.read-image-tag.outputs.image }} already exists"
+
+      - name: Build and push image
+        id: push
+        if: ${{ steps.image-exists.outcome == 'failure' || inputs.force }}
+        uses: docker/build-push-action@v6
+        with:
+          platforms: linux/amd64,linux/arm64
+          push: true
+          file: ${{ inputs.dockerfile_path }}
+          sbom: true
+          provenance: true
+          tags: ${{ steps.read-image-tag.outputs.image }}
+          build-args: |
+            ${{ inputs.component_name }}=${{ steps.read-image-tag.outputs.tag }}
+
+      - name: Attest k8s image
+        uses: actions/attest-build-provenance@v2
+        if: ${{ steps.image-exists.outcome == 'failure' || inputs.force }}
+        id: attest
+        with:
+          subject-name: ${{ inputs.image_name }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
