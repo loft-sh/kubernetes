@@ -58,9 +58,9 @@ jobs:
         id: read-build-args
         run: |
           set -x
-          cniVersion=$(./hack/parse-version.sh CNI_PLUGINS_VERSION ./hack/kubernetes-${{ inputs.k8s-minor-version })
-          runcVersion=$(./hack/parse-version.sh RUNC_VERSION ./hack/kubernetes-${{ inputs.k8s-minor-version })
-          containerdVersion=$(./hack/parse-version.sh CONTAINERD_VERSION ./hack/kubernetes-${{ inputs.k8s-minor-version })
+          cniVersion=$(./hack/parse-version.sh CNI_PLUGINS_VERSION ./hack/kubernetes-${{ inputs.k8s-minor-version }})
+          runcVersion=$(./hack/parse-version.sh RUNC_VERSION ./hack/kubernetes-${{ inputs.k8s-minor-version }})
+          containerdVersion=$(./hack/parse-version.sh CONTAINERD_VERSION ./hack/kubernetes-${{ inputs.k8s-minor-version }})
           
           echo "cniPluginsVersion=${cniVersion}" >> "$GITHUB_OUTPUT"
           echo "runcVersion=${runcVersion}" >> "$GITHUB_OUTPUT"
