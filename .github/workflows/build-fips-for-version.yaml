@@ -6,6 +6,12 @@ on:
       k8s-version:
         required: true
         type: string
+  workflow_dispatch: # Add manual trigger
+    inputs:
+      k8s-version:
+        description: 'Kubernetes version to build (e.g., v1.33.0)'
+        required: true
+        type: string
 
 run-name: Build K8s FIPS Version ${{ inputs.k8s-version }}
 
@@ -43,7 +49,7 @@ jobs:
           
           echo "version=$KUBERNETES_VERSION_TRIMMED" >> $GITHUB_OUTPUT
           echo "fullVersion=$VERSION" >> $GITHUB_OUTPUT
-          PAUSE_IMAGE_VERSION=$(./parse-version.sh PAUSE_IMAGE_VERSION ./hack/kubernetes-$KUBERNETES_VERSION_TRIMMED)
+          PAUSE_IMAGE_VERSION=$(./hack/parse-version.sh PAUSE_IMAGE_VERSION ./hack/kubernetes-$KUBERNETES_VERSION_TRIMMED)
           echo "pauseImageVersion=$PAUSE_IMAGE_VERSION" >> $GITHUB_OUTPUT
 
   build-k8s-nodes-image:
