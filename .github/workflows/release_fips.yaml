@@ -84,21 +84,16 @@ jobs:
 
   build-k8s-versions:
     needs: generate-matrix
-    runs-on: ubuntu-latest
+    uses: ./.github/workflows/build-fips-for-version.yaml
+    strategy:
+      matrix: ${{ fromJson(needs.generate-matrix.outputs.matrix) }}
+      fail-fast: false
+    with:
+      k8s-version: ${{ matrix.version }}
     permissions:
       id-token: write
       packages: write
       contents: read
       attestations: write
-    strategy:
-      matrix: ${{ fromJson(needs.generate-matrix.outputs.matrix) }}
-      fail-fast: false
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Build kubernetes FIPS ${{ matrix.version }}
-        uses: ./github/workflows/build-fips-for-version.yaml
-        with:
-          k8s-version: ${{ matrix.version }}
+    secrets: inherit  # Pass all secrets to the reusable workflow
 

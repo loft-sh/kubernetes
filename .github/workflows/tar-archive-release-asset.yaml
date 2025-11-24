@@ -66,7 +66,7 @@ jobs:
           KUBERNETES_VERSION: ${{ inputs.k8s-version }}
           PAUSE_IMAGE_VERSION: ${{ inputs.pause-image-version }}
           ETCD_FIPS_IMAGE: ${{ inputs.etcd-fips-image }}
-          KONNECTIVITY_FIPS_IMAGE: ${{ inputs.konnectivity-image }}
+          KONNECTIVITY_FIPS_IMAGE: ${{ inputs.konnectivity-fips-image }}
           HELM_FIPS_IMAGE: ${{ inputs.helm-fips-image }}
           KINE_FIPS_IMAGE: ${{ inputs.kine-fips-image }}
           TARGET_ARCH: ${{ inputs.arch }}

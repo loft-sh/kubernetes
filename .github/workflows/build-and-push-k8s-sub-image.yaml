@@ -52,7 +52,7 @@ jobs:
         id: image-name
         run: |
           set -x
-          echo "image=ghcr.io/loft-sh/kubernetes-node-fips:${{ inputs.k8s-version }}" >> "$GITHUB_OUTPUT
+          echo "image=ghcr.io/loft-sh/kubernetes-node-fips:${{ inputs.k8s-version }}" >> "$GITHUB_OUTPUT"
 
       - name: Read build args
         id: read-build-args
@@ -77,13 +77,6 @@ jobs:
         run: |
           echo "Image ${{ steps.image-name.outputs.image }} already exists"
 
-      - name: Read build args
-        id: build-args
-        run: |
-          echo "args<<EOF" >> $GITHUB_OUTPUT
-          cat ./hack/kubernetes-${{ inputs.k8s-minor-version }} >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-
       - name: Build and push image
         id: push
         if: ${{ steps.image-exists.outcome == 'failure' }}
@@ -94,7 +87,7 @@ jobs:
           file: ./fips/base-images/Dockerfile.k8s-full
           sbom: true
           provenance: true
-          tags: ${{ steps.image-name.outputs.image }}}
+          tags: ${{ steps.image-name.outputs.image }}
           build-args: |
             CNI_PLUGINS_VERSION=${{ steps.read-build-args.outputs.cniPluginsVersion }}
             RUNC_VERSION=${{ steps.read-build-args.outputs.runcVersion }}
