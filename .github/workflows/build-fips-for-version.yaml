@@ -58,6 +58,7 @@ jobs:
     with:
       k8s-minor-version: ${{ needs.build-k8s-versions.outputs.k8s-minor-version }}
       k8s-version: ${{ needs.build-k8s-versions.outputs.k8s-version }}
+    secrets: inherit
 
   build-helm-image:
     needs: build-k8s-versions
@@ -67,6 +68,7 @@ jobs:
       dockerfile_path: ./fips/base-images/Dockerfile.helm
       k8s-minor-version: ${{ needs.build-k8s-versions.outputs.k8s-minor-version }}
       component_name: HELM_VERSION
+    secrets: inherit
 
   build-etcd-image:
     needs: build-k8s-versions
@@ -76,6 +78,7 @@ jobs:
       dockerfile_path: ./fips/base-images/Dockerfile.etcd
       k8s-minor-version: ${{ needs.build-k8s-versions.outputs.k8s-minor-version }}
       component_name: ETCD_VERSION
+    secrets: inherit
 
   build-kine-image:
     needs: build-k8s-versions
@@ -85,6 +88,7 @@ jobs:
       dockerfile_path: ./fips/base-images/Dockerfile.kine
       k8s-minor-version: ${{ needs.build-k8s-versions.outputs.k8s-minor-version }}
       component_name: KINE_VERSION
+    secrets: inherit
 
   build-konnectivity-image:
     needs: build-k8s-versions
@@ -94,6 +98,7 @@ jobs:
       dockerfile_path: ./fips/base-images/Dockerfile.konnectivity-server
       k8s-minor-version: ${{ needs.build-k8s-versions.outputs.k8s-minor-version }}
       component_name: KONNECTIVITY_VERSION
+    secrets: inherit
 
 
   # build k8s CP image for shared vCluster (apiserver, controller-manager, and scheduler only
@@ -151,6 +156,7 @@ jobs:
       kine-fips-image: ${{ needs.build-kine-image.outputs.image }}
       konnectivity-fips-image: ${{ needs.build-konnectivity-image.outputs.image }}
       pause-image-version: ${{ needs.build-k8s-versions.outputs.pauseImageVersion }}
+    secrets: inherit
 
   build-arm64-tar-archives:
     uses: ./.github/workflows/tar-archive-release-asset.yaml
@@ -170,6 +176,7 @@ jobs:
       kine-fips-image: ${{ needs.build-kine-image.outputs.image }}
       konnectivity-fips-image: ${{ needs.build-konnectivity-image.outputs.image }}
       pause-image-version: ${{ needs.build-k8s-versions.outputs.pauseImageVersion }}
+    secrets: inherit
 
   build-k8s-fips-full-image:
     needs:
