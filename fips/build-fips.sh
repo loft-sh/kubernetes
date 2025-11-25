@@ -83,7 +83,7 @@ rmdir "${OUTPUT_DIR}/kubernetes"
 # Download pause image
 echo "Downloading pause image ${PAUSE_IMAGE_VERSION}..."
 docker pull --platform=${TARGET_OS_ARCH} rancher/mirrored-pause:${PAUSE_IMAGE_VERSION}
-docker save -o ./release/pause-image.tar rancher/mirrored-pause:${PAUSE_IMAGE_VERSION}
+docker save -o "${OUTPUT_DIR}/pause-image.tar" rancher/mirrored-pause:${PAUSE_IMAGE_VERSION}
 echo "rancher/mirrored-pause:${PAUSE_IMAGE_VERSION}" > ./release/pause-image.txt
 
 # create tar archive
