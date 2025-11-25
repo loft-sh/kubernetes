@@ -38,7 +38,7 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
+          username: "loft-bot"
           password: ${{ secrets.GH_ACCESS_TOKEN }}
 
       - name: Build kubernetes FIPS ${{ inputs.k8s-version }}
@@ -46,7 +46,7 @@ jobs:
         run: |
           VERSION=${{ inputs.k8s-version }}
           KUBERNETES_VERSION_TRIMMED=$(echo ${VERSION} | sed -E 's/^(v[0-9]+\.[0-9]+)\.[0-9]+$/\1/')
-          
+
           echo "version=$KUBERNETES_VERSION_TRIMMED" >> $GITHUB_OUTPUT
           echo "fullVersion=$VERSION" >> $GITHUB_OUTPUT
           PAUSE_IMAGE_VERSION=$(./hack/parse-version.sh PAUSE_IMAGE_VERSION ./hack/kubernetes-$KUBERNETES_VERSION_TRIMMED)
@@ -116,7 +116,7 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
+          username: "loft-bot"
           password: ${{ secrets.GH_ACCESS_TOKEN }}
       - name: Build and push
         id: push-fips
@@ -200,7 +200,7 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
+          username: "loft-bot"
           password: ${{ secrets.GH_ACCESS_TOKEN }}
       - name: Download tar archives from release
         env:
@@ -235,5 +235,3 @@ jobs:
           subject-name: ghcr.io/loft-sh/kubernetes
           subject-digest: ${{ steps.push-fips-full.outputs.digest }}
           push-to-registry: true
-
-

@@ -56,7 +56,7 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
+          username: "loft-bot"
           password: ${{ secrets.GH_ACCESS_TOKEN }}
 
       - name: Build kubernetes FIPS ${{ inputs.k8s-version }}
@@ -79,8 +79,8 @@ jobs:
           KUBERNETES_VERSION_TRIMMED=$(echo ${KUBERNETES_VERSION} | sed -E 's/^(v[0-9]+\.[0-9]+)\.[0-9]+$/\1/')
 
           echo "Building FIPS release tar archives for Kubernetes ${KUBERNETES_VERSION} (linux/${{ inputs.arch }})..."
-          
-          ./build-fips.sh       
+
+          ./build-fips.sh
 
           # Create a new release with the archives as assets
           if gh release view $KUBERNETES_VERSION --repo ${{ github.repository }} &>/dev/null; then
