@@ -93,6 +93,6 @@ jobs:
     permissions:
       id-token: write
       packages: write
-      contents: read
+      contents: write
       attestations: write
     secrets: inherit  # Pass all secrets to the reusable workflow

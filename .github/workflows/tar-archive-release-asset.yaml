@@ -43,7 +43,7 @@ jobs:
     permissions:
       id-token: write
       packages: write
-      contents: read
+      contents: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -80,6 +80,8 @@ jobs:
           echo "Building FIPS release tar archives for Kubernetes ${KUBERNETES_VERSION} (linux/${{ inputs.arch }})..."
 
           ./build-fips.sh
+          
+          echo "Artifact built. Trying to upload artifact to the release..."
 
           # Create a new release with the archives as assets
           if gh release view $KUBERNETES_VERSION --repo ${{ github.repository }} &>/dev/null; then

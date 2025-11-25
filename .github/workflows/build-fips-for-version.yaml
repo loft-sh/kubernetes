@@ -143,7 +143,7 @@ jobs:
     permissions:
       id-token: write
       packages: write
-      contents: read
+      contents: write
       attestations: write
     needs:
       - build-k8s-nodes-image
@@ -160,7 +160,7 @@ jobs:
       helm-fips-image: ${{ needs.build-helm-image.outputs.image }}
       kine-fips-image: ${{ needs.build-kine-image.outputs.image }}
       konnectivity-fips-image: ${{ needs.build-konnectivity-image.outputs.image }}
-      pause-image-version: ${{ needs.build-k8s-versions.outputs.pauseImageVersion }}
+      pause-image-version: ${{ needs.build-k8s-versions.outputs.pause-image-version }}
     secrets: inherit
 
   build-arm64-tar-archives:
@@ -168,7 +168,7 @@ jobs:
     permissions:
       id-token: write
       packages: write
-      contents: read
+      contents: write
       attestations: write
     needs:
       - build-k8s-nodes-image
@@ -185,7 +185,7 @@ jobs:
       helm-fips-image: ${{ needs.build-helm-image.outputs.image }}
       kine-fips-image: ${{ needs.build-kine-image.outputs.image }}
       konnectivity-fips-image: ${{ needs.build-konnectivity-image.outputs.image }}
-      pause-image-version: ${{ needs.build-k8s-versions.outputs.pauseImageVersion }}
+      pause-image-version: ${{ needs.build-k8s-versions.outputs.pause-image-version }}
     secrets: inherit
 
   build-k8s-fips-full-image:
@@ -221,15 +221,15 @@ jobs:
         env:
           KUBERNETES_VERSION: ${{ inputs.k8s-version }}
         run: |
-          curl -fsSLk -o .fips/kubernetes-${KUBERNETES_VERSION}-amd64-fips.tar.gz https://github.com/loft-sh/kubernetes/releases/download/${KUBERNETES_VERSION}/kubernetes-${KUBERNETES_VERSION}-amd64-fips.tar.gz
-          curl -fsSLk -o .fips/kubernetes-${KUBERNETES_VERSION}-arm64-fips.tar.gz https://github.com/loft-sh/kubernetes/releases/download/${KUBERNETES_VERSION}/kubernetes-${KUBERNETES_VERSION}-arm64-fips.tar.gz
+          curl -fsSLk -o ./fips/kubernetes-${KUBERNETES_VERSION}-amd64-fips.tar.gz https://github.com/loft-sh/kubernetes/releases/download/${KUBERNETES_VERSION}/kubernetes-${KUBERNETES_VERSION}-amd64-fips.tar.gz
+          curl -fsSLk -o ./fips/kubernetes-${KUBERNETES_VERSION}-arm64-fips.tar.gz https://github.com/loft-sh/kubernetes/releases/download/${KUBERNETES_VERSION}/kubernetes-${KUBERNETES_VERSION}-arm64-fips.tar.gz
 
       - name: Build and push
         id: push-fips-full
         uses: docker/build-push-action@v6
         with:
           platforms: linux/amd64,linux/arm64
-          context: .fips
+          context: ./fips
           file: ./fips/Dockerfile.full
           push: true
           sbom: true
