@@ -44,7 +44,6 @@ jobs:
       id-token: write
       packages: write
       contents: read
-      attestations: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
