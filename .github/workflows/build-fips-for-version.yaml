@@ -18,11 +18,6 @@ run-name: Build K8s FIPS Version ${{ inputs.k8s-version }}
 jobs:
   build-k8s-versions:
     runs-on: ubuntu-latest
-    permissions:
-      id-token: write
-      packages: write
-      contents: read
-      attestations: write
     outputs:
       k8s-minor-version: ${{ steps.trim-version.outputs.version }}
       k8s-version: ${{ steps.trim-version.outputs.fullVersion }}
@@ -105,6 +100,11 @@ jobs:
   build-k8s-fips-image:
     needs: [build-k8s-nodes-image, build-k8s-versions]
     runs-on: ubuntu-24.04
+    permissions:
+      id-token: write
+      packages: write
+      contents: read
+      attestations: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -140,6 +140,10 @@ jobs:
 
   build-amd64-tar-archives:
     uses: ./.github/workflows/tar-archive-release-asset.yaml
+    permissions:
+      id-token: write
+      packages: write
+      contents: read
     needs:
       - build-k8s-nodes-image
       - build-k8s-versions
@@ -160,6 +164,10 @@ jobs:
 
   build-arm64-tar-archives:
     uses: ./.github/workflows/tar-archive-release-asset.yaml
+    permissions:
+      id-token: write
+      packages: write
+      contents: read
     needs:
       - build-k8s-nodes-image
       - build-k8s-versions
@@ -179,6 +187,11 @@ jobs:
     secrets: inherit
 
   build-k8s-fips-full-image:
+    permissions:
+      id-token: write
+      packages: write
+      contents: read
+      attestations: write
     needs:
       - build-k8s-nodes-image
       - build-k8s-versions
