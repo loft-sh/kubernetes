@@ -41,7 +41,7 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
+          username: "loft-bot"
           password: ${{ secrets.GH_ACCESS_TOKEN }}
 
       - name: Get stable K8s releases
@@ -96,4 +96,3 @@ jobs:
       contents: read
       attestations: write
     secrets: inherit  # Pass all secrets to the reusable workflow
-
