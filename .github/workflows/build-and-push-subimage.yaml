@@ -58,8 +58,8 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: "loft-bot"
-          password: ${{ secrets.GH_ACCESS_TOKEN }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Read image tag
         id: read-image-tag
