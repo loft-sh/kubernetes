@@ -10,14 +10,25 @@ FROM ${HELM_IMAGE} AS helm-fips
 FROM ${KINE_IMAGE} AS kine-fips
 FROM ${KONNECTIVITY_IMAGE} AS konnectivity-fips
 
-# we use the distroless base-nossl debug image, as it contains
-# a basic shell, glibc and nothing else.
-FROM gcr.io/distroless/base-nossl:debug
+# we use UBI because we need group and user to run this as an vCluster's init container
+FROM registry.access.redhat.com/ubi9/ubi-minimal:9.7
 
 LABEL maintainer="vCluster Labs <support@vcluster.com>"
 LABEL description="Kubernetes control plane components (apiserver, controller-manager, scheduler, etcd, konnectivity-server) and tar archives with node components"
 
+ENV OPENSSL_CONF=/etc/pki/tls/openssl_fips.cnf
+
 ARG K8S_VERSION="v1.33.0"
+
+RUN microdnf install -y \
+      ca-certificates \
+      bash \
+      tzdata \
+    && microdnf clean all \
+    && groupadd -g 1000 kubernetes \
+    && useradd -u 1000 -g kubernetes -m -s /bin/bash kubernetes \
+    && mkdir -p /kubernetes \
+    && chown -R kubernetes:kubernetes /kubernetes
 
 # Must be aligned with https://github.com/loft-sh/kubernetes/blob/main/Dockerfile#L30-L33
 COPY --chown=kubernetes:kubernetes --from=k8s-local /kubernetes/kube-apiserver /kubernetes/kube-apiserver
