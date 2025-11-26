@@ -10,14 +10,20 @@ FROM ${HELM_IMAGE} AS helm-fips
 FROM ${KINE_IMAGE} AS kine-fips
 FROM ${KONNECTIVITY_IMAGE} AS konnectivity-fips
 
-# we use the distroless base-nossl debug image, as it contains
-# a basic shell, glibc and nothing else.
-FROM gcr.io/distroless/base-nossl:debug
+# we use Alpine image because we need group and user to run this as an vCluster's init container
+FROM alpine:3.18
 
 LABEL maintainer="vCluster Labs <support@vcluster.com>"
 LABEL description="Kubernetes control plane components (apiserver, controller-manager, scheduler, etcd, konnectivity-server) and tar archives with node components"
 
 ARG K8S_VERSION="v1.33.0"
+
+RUN apk --no-cache add \
+      ca-certificates bash curl tzdata \
+    && addgroup -g 1000 kubernetes \
+    && adduser -D -u 1000 -G kubernetes kubernetes \
+    && mkdir -p /kubernetes \
+    && chown -R kubernetes:kubernetes /kubernetes
 
 # Must be aligned with https://github.com/loft-sh/kubernetes/blob/main/Dockerfile#L30-L33
 COPY --chown=kubernetes:kubernetes --from=k8s-local /kubernetes/kube-apiserver /kubernetes/kube-apiserver
