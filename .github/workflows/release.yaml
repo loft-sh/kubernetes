@@ -21,6 +21,10 @@ on:
       kubernetes_minor_version:
         description: The minimum minor version of Kubernetes to build
         type: string
+      version_metadata_suffix:
+        description: Suffix to add to the docker image tag. This is usually needed only in special cases (e.g. when you want to build a new image for existing version with one of the component updated, for example -etcdv3.5.24)
+        type: string
+        default: ""
 
 jobs:
   build-missing-k8s-versions:
@@ -97,6 +101,11 @@ jobs:
                 continue
               fi
 
+              VERSION_WITHOUT_SUFFIX=${VERSION}
+              VERSION_SUFFIX=${{ inputs.version_metadata_suffix }}
+
+              VERSION="${VERSION}${VERSION_SUFFIX}"
+
               if gh release view $VERSION --repo ${{ github.repository }} &>/dev/null && [[ $FORCE == "false" ]]; then
                 echo "Release for Kubernetes $VERSION already exists, skipping"
                 continue
@@ -105,43 +114,43 @@ jobs:
               echo "Building release for Kubernetes $VERSION..."
               
               # Download for amd64
-              ./download.sh --kubernetes-version $VERSION --target-arch amd64
+              ./download.sh --kubernetes-version $VERSION_WITHOUT_SUFFIX --target-arch amd64
               
               # Download for arm64
-              ./download.sh --kubernetes-version $VERSION --target-arch arm64
+              ./download.sh --kubernetes-version $VERSION_WITHOUT_SUFFIX --target-arch arm64
               
               # Create a new release with the archives as assets
               if gh release view $VERSION --repo ${{ github.repository }} &>/dev/null; then
                 gh release upload "$VERSION" \
-                  "./kubernetes-$VERSION-amd64.tar.gz" \
-                  "./kubernetes-$VERSION-arm64.tar.gz" \
-                  "./kubernetes-$VERSION-amd64-full.tar.gz" \
-                  "./kubernetes-$VERSION-arm64-full.tar.gz" \
+                  "./kubernetes-$VERSION_WITHOUT_SUFFIX-amd64.tar.gz" \
+                  "./kubernetes-$VERSION_WITHOUT_SUFFIX-arm64.tar.gz" \
+                  "./kubernetes-$VERSION_WITHOUT_SUFFIX-amd64-full.tar.gz" \
+                  "./kubernetes-$VERSION_WITHOUT_SUFFIX-arm64-full.tar.gz" \
                   --repo ${{ github.repository }} \
                   --clobber
 
                 # Edit the release notes to include the component versions
                 gh release edit "$VERSION" \
-                  --notes-file "./kubernetes-$VERSION.txt" \
+                  --notes-file "./kubernetes-$VERSION_WITHOUT_SUFFIX.txt" \
                   --repo ${{ github.repository }}
 
                 echo "Updated release for Kubernetes $VERSION"
               else
                 gh release create $VERSION \
                   --title "Kubernetes $VERSION" \
-                  --notes-file "./kubernetes-$VERSION.txt" \
+                  --notes-file "./kubernetes-$VERSION_WITHOUT_SUFFIX.txt" \
                   --repo ${{ github.repository }} \
-                  "./kubernetes-$VERSION-amd64.tar.gz" \
-                  "./kubernetes-$VERSION-arm64.tar.gz" \
-                  "./kubernetes-$VERSION-amd64-full.tar.gz" \
-                  "./kubernetes-$VERSION-arm64-full.tar.gz"
+                  "./kubernetes-$VERSION_WITHOUT_SUFFIX-amd64.tar.gz" \
+                  "./kubernetes-$VERSION_WITHOUT_SUFFIX-arm64.tar.gz" \
+                  "./kubernetes-$VERSION_WITHOUT_SUFFIX-amd64-full.tar.gz" \
+                  "./kubernetes-$VERSION_WITHOUT_SUFFIX-arm64-full.tar.gz"
                 
                 echo "Released Kubernetes $VERSION"
               fi
 
               # Remove the full archives
-              rm -f "./kubernetes-$VERSION-amd64-full.tar.gz"
-              rm -f "./kubernetes-$VERSION-arm64-full.tar.gz"
+              rm -f "./kubernetes-$VERSION_WITHOUT_SUFFIX-amd64-full.tar.gz"
+              rm -f "./kubernetes-$VERSION_WITHOUT_SUFFIX-arm64-full.tar.gz"
 
               # Build the full image with node binaries
               docker buildx build \
@@ -150,8 +159,8 @@ jobs:
                 --push .
 
               # Remove the node archives
-              rm -f "./kubernetes-$VERSION-amd64.tar.gz"
-              rm -f "./kubernetes-$VERSION-arm64.tar.gz"
+              rm -f "./kubernetes-$VERSION_WITHOUT_SUFFIX-amd64.tar.gz"
+              rm -f "./kubernetes-$VERSION_WITHOUT_SUFFIX-arm64.tar.gz"
 
               # Build the control plane image
               docker buildx build \
