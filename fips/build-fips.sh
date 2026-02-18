@@ -82,9 +82,12 @@ rmdir "${OUTPUT_DIR}/kubernetes"
 
 # Download pause image
 echo "Downloading pause image ${PAUSE_IMAGE_VERSION}..."
-docker pull --platform=${TARGET_OS_ARCH} rancher/mirrored-pause:${PAUSE_IMAGE_VERSION}
-docker save -o "${OUTPUT_DIR}/pause-image.tar" rancher/mirrored-pause:${PAUSE_IMAGE_VERSION}
-echo "rancher/mirrored-pause:${PAUSE_IMAGE_VERSION}" > ./release/pause-image.txt
+skopeo copy \
+  --override-arch "${TARGET_ARCH}" \
+  --override-os linux \
+  "docker://registry.k8s.io/pause:${PAUSE_IMAGE_VERSION}" \
+  "docker-archive:${OUTPUT_DIR}/pause-image.tar:registry.k8s.io/pause:${PAUSE_IMAGE_VERSION}"
+echo "registry.k8s.io/pause:${PAUSE_IMAGE_VERSION}" > ./release/pause-image.txt
 
 # create tar archive
 echo "creating node components tar archive..."
