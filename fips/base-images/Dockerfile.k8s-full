@@ -1,4 +1,4 @@
-ARG GO_VERSION=1.24
+ARG GO_VERSION=1.25
 FROM docker.io/library/golang:${GO_VERSION}-bookworm AS build
 
 ARG KUBERNETES_VERSION=v1.33.0
@@ -46,7 +46,7 @@ RUN \
 
 
 FROM docker.io/library/golang:${GO_VERSION}-bookworm AS build-cni-plugins
-ARG GO_VERSION=1.24
+ARG GO_VERSION=1.25
 ARG CNI_PLUGINS_VERSION=v1.8.0
 ARG CNI_META_PLUGINS="bandwidth firewall portmap"
 ARG CNI_MAIN_PLUGINS="bridge loopback"
@@ -98,7 +98,7 @@ RUN set -ex; \
 
 
 FROM docker.io/library/golang:${GO_VERSION}-bookworm AS build-runc
-ARG GO_VERSION=1.24
+ARG GO_VERSION=1.25
 ARG RUNC_VERSION=v1.3.3
 
 RUN apt-get update -y && \
@@ -135,7 +135,7 @@ RUN \
 
 
 FROM docker.io/library/golang:${GO_VERSION}-bookworm AS build-containerd
-ARG GO_VERSION=1.24
+ARG GO_VERSION=1.25
 ARG CONTAINERD_VERSION=2.1.4
 
 
