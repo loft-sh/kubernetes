@@ -4,3 +4,4 @@
 /hack/release
 /hack/versions
 /hack/*.tar.gz
+.DS_Store

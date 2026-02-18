@@ -95,21 +95,33 @@ mkdir -p ./release
 
 # Download kubeadm, kubelet, and kubectl
 echo "Downloading kubeadm ${KUBERNETES_VERSION}..."
-curl -s -L -o kubeadm https://dl.k8s.io/release/${KUBERNETES_VERSION}/bin/linux/${TARGETARCH}/kubeadm
+if ! curl -fsS -L -o kubeadm "https://dl.k8s.io/release/${KUBERNETES_VERSION}/bin/linux/${TARGETARCH}/kubeadm"; then
+  echo "Error: failed to download kubeadm ${KUBERNETES_VERSION} for ${TARGETARCH}"
+  exit 1
+fi
 chmod +x kubeadm
 mv kubeadm ./release/kubeadm
 echo "Downloading kubelet ${KUBERNETES_VERSION}..."
-curl -s -L -o kubelet https://dl.k8s.io/release/${KUBERNETES_VERSION}/bin/linux/${TARGETARCH}/kubelet
+if ! curl -fsS -L -o kubelet "https://dl.k8s.io/release/${KUBERNETES_VERSION}/bin/linux/${TARGETARCH}/kubelet"; then
+  echo "Error: failed to download kubelet ${KUBERNETES_VERSION} for ${TARGETARCH}"
+  exit 1
+fi
 chmod +x kubelet
 mv kubelet ./release/kubelet
 echo "Downloading kubectl ${KUBERNETES_VERSION}..."
-curl -s -L -o kubectl https://dl.k8s.io/release/${KUBERNETES_VERSION}/bin/linux/${TARGETARCH}/kubectl
+if ! curl -fsS -L -o kubectl "https://dl.k8s.io/release/${KUBERNETES_VERSION}/bin/linux/${TARGETARCH}/kubectl"; then
+  echo "Error: failed to download kubectl ${KUBERNETES_VERSION} for ${TARGETARCH}"
+  exit 1
+fi
 chmod +x kubectl
 mv kubectl ./release/kubectl
 
 # Install CNI plugins
 echo "Downloading CNI plugins ${CNI_BINARIES_VERSION}..."
-curl -s -L -o cni.tgz https://github.com/containernetworking/plugins/releases/download/${CNI_BINARIES_VERSION}/cni-plugins-linux-${TARGETARCH}-${CNI_BINARIES_VERSION}.tgz
+if ! curl -fsS -L -o cni.tgz "https://github.com/containernetworking/plugins/releases/download/${CNI_BINARIES_VERSION}/cni-plugins-linux-${TARGETARCH}-${CNI_BINARIES_VERSION}.tgz"; then
+  echo "Error: failed to download CNI plugins ${CNI_BINARIES_VERSION} for ${TARGETARCH}"
+  exit 1
+fi
 mkdir cni
 tar -zxf cni.tgz -C cni
 mkdir -p ./release/cni/bin
@@ -124,7 +136,10 @@ rm -rf cni
 
 # Download containerd & runc
 echo "Downloading containerd ${CONTAINERD_VERSION}..."
-curl -s -L -o containerd.tgz https://github.com/containerd/containerd/releases/download/v${CONTAINERD_VERSION}/containerd-${CONTAINERD_VERSION}-linux-${TARGETARCH}.tar.gz
+if ! curl -fsS -L -o containerd.tgz "https://github.com/containerd/containerd/releases/download/v${CONTAINERD_VERSION}/containerd-${CONTAINERD_VERSION}-linux-${TARGETARCH}.tar.gz"; then
+  echo "Error: failed to download containerd ${CONTAINERD_VERSION} for ${TARGETARCH}"
+  exit 1
+fi
 tar -zxf containerd.tgz bin
 chmod +x bin/containerd-shim-runc-v2
 mv bin/containerd-shim-runc-v2 ./release/containerd-shim-runc-v2
@@ -135,19 +150,30 @@ mv bin/ctr ./release/ctr
 rm containerd.tgz
 rm -rf bin
 echo "Downloading runc ${RUNC_VERSION}..."
-curl -s -L -o runc https://github.com/opencontainers/runc/releases/download/${RUNC_VERSION}/runc.${TARGETARCH}
+if ! curl -fsS -L -o runc "https://github.com/opencontainers/runc/releases/download/${RUNC_VERSION}/runc.${TARGETARCH}"; then
+  echo "Error: failed to download runc ${RUNC_VERSION} for ${TARGETARCH}"
+  exit 1
+fi
 chmod +x runc
 mv runc ./release/runc
 
 # Download crictl
 echo "Downloading crictl ${CRICTL_VERSION}..."
-curl -s -L https://github.com/kubernetes-sigs/cri-tools/releases/download/${CRICTL_VERSION}/crictl-${CRICTL_VERSION}-linux-${TARGETARCH}.tar.gz --output crictl-${CRICTL_VERSION}-linux-${TARGETARCH}.tar.gz
+if ! curl -fsS -L "https://github.com/kubernetes-sigs/cri-tools/releases/download/${CRICTL_VERSION}/crictl-${CRICTL_VERSION}-linux-${TARGETARCH}.tar.gz" --output "crictl-${CRICTL_VERSION}-linux-${TARGETARCH}.tar.gz"; then
+  echo "Error: failed to download crictl ${CRICTL_VERSION} for ${TARGETARCH}"
+  exit 1
+fi
 tar -zxf crictl-${CRICTL_VERSION}-linux-${TARGETARCH}.tar.gz -C ./release
 rm -f crictl-${CRICTL_VERSION}-linux-${TARGETARCH}.tar.gz
 
 # Download vcluster-tunnel
 echo "Downloading vcluster-tunnel ${TAILSCALED_VERSION}..."
-curl -s -L -o vcluster-tunnel https://github.com/loft-sh/tailscale/releases/download/${TAILSCALED_VERSION}/tailscaled-linux-${TARGETARCH} && chmod +x ./vcluster-tunnel && mv ./vcluster-tunnel ./release/vcluster-tunnel
+if ! curl -fsS -L -o vcluster-tunnel "https://github.com/loft-sh/tailscale/releases/download/${TAILSCALED_VERSION}/tailscaled-linux-${TARGETARCH}"; then
+  echo "Error: failed to download vcluster-tunnel ${TAILSCALED_VERSION} for ${TARGETARCH}"
+  exit 1
+fi
+chmod +x ./vcluster-tunnel
+mv ./vcluster-tunnel ./release/vcluster-tunnel
 
 # Download pause image
 echo "Downloading pause image ${PAUSE_IMAGE_VERSION}..."
@@ -193,24 +219,36 @@ mkdir -p ./release
 
 # Download kube-apiserver
 echo "Downloading kube-apiserver ${KUBERNETES_VERSION}..."
-curl -s -L -o kube-apiserver https://dl.k8s.io/release/${KUBERNETES_VERSION}/bin/linux/${TARGETARCH}/kube-apiserver
+if ! curl -fsS -L -o kube-apiserver "https://dl.k8s.io/release/${KUBERNETES_VERSION}/bin/linux/${TARGETARCH}/kube-apiserver"; then
+  echo "Error: failed to download kube-apiserver ${KUBERNETES_VERSION} for ${TARGETARCH}"
+  exit 1
+fi
 chmod +x kube-apiserver
 cp kube-apiserver ./kube-apiserver-${TARGETARCH}
 mv kube-apiserver ./release/kube-apiserver
 echo "Downloading kube-controller-manager ${KUBERNETES_VERSION}..."
-curl -s -L -o kube-controller-manager https://dl.k8s.io/release/${KUBERNETES_VERSION}/bin/linux/${TARGETARCH}/kube-controller-manager
+if ! curl -fsS -L -o kube-controller-manager "https://dl.k8s.io/release/${KUBERNETES_VERSION}/bin/linux/${TARGETARCH}/kube-controller-manager"; then
+  echo "Error: failed to download kube-controller-manager ${KUBERNETES_VERSION} for ${TARGETARCH}"
+  exit 1
+fi
 chmod +x kube-controller-manager
 cp kube-controller-manager ./kube-controller-manager-${TARGETARCH}
 mv kube-controller-manager ./release/kube-controller-manager
 echo "Downloading kube-scheduler ${KUBERNETES_VERSION}..."
-curl -s -L -o kube-scheduler https://dl.k8s.io/release/${KUBERNETES_VERSION}/bin/linux/${TARGETARCH}/kube-scheduler
+if ! curl -fsS -L -o kube-scheduler "https://dl.k8s.io/release/${KUBERNETES_VERSION}/bin/linux/${TARGETARCH}/kube-scheduler"; then
+  echo "Error: failed to download kube-scheduler ${KUBERNETES_VERSION} for ${TARGETARCH}"
+  exit 1
+fi
 chmod +x kube-scheduler
 cp kube-scheduler ./kube-scheduler-${TARGETARCH}
 mv kube-scheduler ./release/kube-scheduler
 
 # Install helm
 echo "Downloading helm ${HELM_VERSION}..."
-curl -s -L -o helm3.tar.gz https://get.helm.sh/helm-${HELM_VERSION}-linux-${TARGETARCH}.tar.gz
+if ! curl -fsS -L -o helm3.tar.gz "https://get.helm.sh/helm-${HELM_VERSION}-linux-${TARGETARCH}.tar.gz"; then
+  echo "Error: failed to download helm ${HELM_VERSION} for ${TARGETARCH}"
+  exit 1
+fi
 tar -zxf helm3.tar.gz linux-${TARGETARCH}/helm
 chmod +x linux-${TARGETARCH}/helm
 cp linux-${TARGETARCH}/helm ./helm-${TARGETARCH}
@@ -220,7 +258,10 @@ rm -R linux-${TARGETARCH}
 
 # Install etcd
 echo "Downloading etcd ${ETCD_VERSION}..."
-curl -s -L -o ./etcd-${ETCD_VERSION}-linux-${TARGETARCH}.tar.gz https://github.com/etcd-io/etcd/releases/download/${ETCD_VERSION}/etcd-${ETCD_VERSION}-linux-${TARGETARCH}.tar.gz
+if ! curl -fsS -L -o "./etcd-${ETCD_VERSION}-linux-${TARGETARCH}.tar.gz" "https://github.com/etcd-io/etcd/releases/download/${ETCD_VERSION}/etcd-${ETCD_VERSION}-linux-${TARGETARCH}.tar.gz"; then
+  echo "Error: failed to download etcd ${ETCD_VERSION} for ${TARGETARCH}"
+  exit 1
+fi
 mkdir -p ./etcd
 tar xzf ./etcd-${ETCD_VERSION}-linux-${TARGETARCH}.tar.gz -C ./etcd --strip-components=1 --no-same-owner
 rm -f ./etcd-${ETCD_VERSION}-linux-${TARGETARCH}.tar.gz
@@ -234,7 +275,10 @@ rm -R ./etcd
 
 # Install kine
 echo "Downloading kine ${KINE_VERSION}..."
-curl -s -L -o kine https://github.com/loft-sh/kine/releases/download/${KINE_VERSION}/kine-${TARGETARCH}
+if ! curl -fsS -L -o kine "https://github.com/loft-sh/kine/releases/download/${KINE_VERSION}/kine-${TARGETARCH}"; then
+  echo "Error: failed to download kine ${KINE_VERSION} for ${TARGETARCH}"
+  exit 1
+fi
 chmod +x kine
 cp kine ./kine-${TARGETARCH}
 mv kine ./release/kine
