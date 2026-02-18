@@ -85,9 +85,9 @@ echo "Downloading pause image ${PAUSE_IMAGE_VERSION}..."
 skopeo copy \
   --override-arch "${TARGET_ARCH}" \
   --override-os linux \
-  "docker://registry.k8s.io/pause:${PAUSE_IMAGE_VERSION}" \
-  "docker-archive:${OUTPUT_DIR}/pause-image.tar:registry.k8s.io/pause:${PAUSE_IMAGE_VERSION}"
-echo "registry.k8s.io/pause:${PAUSE_IMAGE_VERSION}" > ./release/pause-image.txt
+  "docker://rancher/mirrored-pause:${PAUSE_IMAGE_VERSION}" \
+  "docker-archive:${OUTPUT_DIR}/pause-image.tar:rancher/mirrored-pause:${PAUSE_IMAGE_VERSION}"
+echo "rancher/mirrored-pause:${PAUSE_IMAGE_VERSION}" > ./release/pause-image.txt
 
 # create tar archive
 echo "creating node components tar archive..."
