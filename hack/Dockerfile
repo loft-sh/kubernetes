@@ -1,5 +1,5 @@
 # Final Alpine-based image
-FROM alpine:3.18
+FROM alpine:3.23
 ARG TARGETARCH
 
 LABEL maintainer="Loft Labs Inc <support@loft.sh>"
