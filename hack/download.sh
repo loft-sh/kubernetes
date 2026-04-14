@@ -135,9 +135,11 @@ rm cni.tgz
 rm -rf cni
 
 # Download containerd & runc
-echo "Downloading containerd ${CONTAINERD_VERSION}..."
-if ! curl -fsS -L -o containerd.tgz "https://github.com/containerd/containerd/releases/download/v${CONTAINERD_VERSION}/containerd-${CONTAINERD_VERSION}-linux-${TARGETARCH}.tar.gz"; then
-  echo "Error: failed to download containerd ${CONTAINERD_VERSION} for ${TARGETARCH}"
+# Use containerd-static to avoid glibc version dependencies (RHEL 8 ships glibc 2.28,
+# dynamic containerd requires glibc 2.35+).
+echo "Downloading containerd-static ${CONTAINERD_VERSION}..."
+if ! curl -fsS -L -o containerd.tgz "https://github.com/containerd/containerd/releases/download/v${CONTAINERD_VERSION}/containerd-static-${CONTAINERD_VERSION}-linux-${TARGETARCH}.tar.gz"; then
+  echo "Error: failed to download containerd-static ${CONTAINERD_VERSION} for ${TARGETARCH}"
   exit 1
 fi
 tar -zxf containerd.tgz bin
