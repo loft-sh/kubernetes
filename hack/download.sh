@@ -267,10 +267,13 @@ tar xzf ./etcd-${ETCD_VERSION}-linux-${TARGETARCH}.tar.gz -C ./etcd --strip-comp
 rm -f ./etcd-${ETCD_VERSION}-linux-${TARGETARCH}.tar.gz
 chmod +x ./etcd/etcd
 chmod +x ./etcd/etcdctl
+chmod +x ./etcd/etcdutl
 cp ./etcd/etcd ./etcd-${TARGETARCH}
 mv ./etcd/etcd ./release/etcd
 cp ./etcd/etcdctl ./etcdctl-${TARGETARCH}
 mv ./etcd/etcdctl ./release/etcdctl
+cp ./etcd/etcdutl ./etcdutl-${TARGETARCH}
+mv ./etcd/etcdutl ./release/etcdutl
 rm -R ./etcd
 
 # Install kine
