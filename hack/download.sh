@@ -9,8 +9,11 @@ HELM_VERSION=""
 ETCD_VERSION=""
 KINE_VERSION=""
 KONNECTIVITY_VERSION=""
+# Default; per-k8s overlays (hack/kubernetes-v1.X) may set TAILSCALED_VERSION to override.
 TAILSCALED_VERSION="v1.78.1-loft.11"
 TARGETARCH="amd64"
+# When set, use this pre-built tailscaled binary instead of downloading from the fork's GitHub releases.
+VCLUSTER_TUNNEL_PATH=""
 
 # Parse command line arguments
 while [ $# -gt 0 ]; do
@@ -23,9 +26,13 @@ while [ $# -gt 0 ]; do
       TARGETARCH="$2"
       shift 2
       ;;
+    --vcluster-tunnel-path)
+      VCLUSTER_TUNNEL_PATH="$2"
+      shift 2
+      ;;
     *)
       echo "Unknown argument: $1"
-      echo "Usage: $0 --kubernetes-version <version>"
+      echo "Usage: $0 --kubernetes-version <version> [--target-arch <arch>] [--vcluster-tunnel-path <file>]"
       exit 1
       ;;
   esac
@@ -166,11 +173,20 @@ fi
 tar -zxf crictl-${CRICTL_VERSION}-linux-${TARGETARCH}.tar.gz -C ./release
 rm -f crictl-${CRICTL_VERSION}-linux-${TARGETARCH}.tar.gz
 
-# Download vcluster-tunnel
-echo "Downloading vcluster-tunnel ${TAILSCALED_VERSION}..."
-if ! curl -fsS -L -o vcluster-tunnel "https://github.com/loft-sh/tailscale/releases/download/${TAILSCALED_VERSION}/tailscaled-linux-${TARGETARCH}"; then
-  echo "Error: failed to download vcluster-tunnel ${TAILSCALED_VERSION} for ${TARGETARCH}"
-  exit 1
+# Obtain vcluster-tunnel (tailscaled from loft-sh/tailscale fork)
+if [ -n "$VCLUSTER_TUNNEL_PATH" ]; then
+  echo "Using local vcluster-tunnel from ${VCLUSTER_TUNNEL_PATH}..."
+  if [ ! -f "$VCLUSTER_TUNNEL_PATH" ]; then
+    echo "Error: --vcluster-tunnel-path file not found: ${VCLUSTER_TUNNEL_PATH}"
+    exit 1
+  fi
+  cp "$VCLUSTER_TUNNEL_PATH" ./vcluster-tunnel
+else
+  echo "Downloading vcluster-tunnel ${TAILSCALED_VERSION}..."
+  if ! curl -fsS -L -o vcluster-tunnel "https://github.com/loft-sh/tailscale/releases/download/${TAILSCALED_VERSION}/tailscaled-linux-${TARGETARCH}"; then
+    echo "Error: failed to download vcluster-tunnel ${TAILSCALED_VERSION} for ${TARGETARCH}"
+    exit 1
+  fi
 fi
 chmod +x ./vcluster-tunnel
 mv ./vcluster-tunnel ./release/vcluster-tunnel
