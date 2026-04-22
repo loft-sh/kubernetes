@@ -2,7 +2,7 @@
 FROM alpine:3.18
 ARG TARGETARCH
 
-LABEL maintainer="Loft Labs Inc <support@loft.sh>"
+LABEL maintainer="vCluster Labs <support@vcluster.com>"
 LABEL description="Kubernetes control plane components (apiserver, controller-manager, scheduler)"
 
 # Install necessary packages
