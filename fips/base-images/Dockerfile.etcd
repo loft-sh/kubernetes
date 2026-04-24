@@ -34,6 +34,18 @@ RUN CGO_ENABLED=1 \
   -o /bin/etcdctl && \
   ./go-assert-fips.sh /bin/etcdctl
 
+# build etcdutl
+WORKDIR /etcd/etcdutl
+COPY go-assert-fips.sh /etcd/etcdutl/
+RUN CGO_ENABLED=1 \
+  GOFIPS140=v1.0.0 \
+  go build -v \
+  -installsuffix=cgo \
+  -ldflags="-X=go.etcd.io/etcd/api/v3/version.GitSHA=$(git rev-parse --short HEAD || echo "GitNotFound")" \
+  -o /bin/etcdutl && \
+  ./go-assert-fips.sh /bin/etcdutl
+
 FROM scratch
 COPY --from=build /bin/etcd /bin/etcd
 COPY --from=build /bin/etcdctl /bin/etcdctl
+COPY --from=build /bin/etcdutl /bin/etcdutl

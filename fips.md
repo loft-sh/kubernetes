@@ -20,7 +20,7 @@ graph TB
     
     ParallelBuilds --> BuildK8sNodes[Build K8s Nodes Image<br/>🐳 kubernetes-node-fips<br/>Contains: kubectl, kubelet, kubeadm<br/>containerd, runc, CNI plugins]
     ParallelBuilds --> BuildHelm[Build Helm Image<br/>🐳 helm-fips<br/>Contains: helm binary]
-    ParallelBuilds --> BuildEtcd[Build Etcd Image<br/>🐳 etcd-fips<br/>Contains: etcd, etcdctl]
+    ParallelBuilds --> BuildEtcd[Build Etcd Image<br/>🐳 etcd-fips<br/>Contains: etcd, etcdctl, etcdutl]
     ParallelBuilds --> BuildKine[Build Kine Image<br/>🐳 kine-fips<br/>Contains: kine binary]
     ParallelBuilds --> BuildKonnectivity[Build Konnectivity Image<br/>🐳 konnectivity-server-fips<br/>Contains: konnectivity-server]
     

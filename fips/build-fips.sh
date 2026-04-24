@@ -127,6 +127,13 @@ else
   exit 1
 fi
 
+if docker cp "$ETCD_CONTAINER_ID:/bin/etcdutl" "$OUTPUT_DIR/etcdutl"; then
+  echo "copied etcdutl to $OUTPUT_DIR/etcdutl"
+else
+  echo "Error: Failed to copy files from etcdutl container"
+  exit 1
+fi
+
 # copy helm binary
 HELM_CONTAINER_ID=$(docker create --platform ${TARGET_OS_ARCH} "${HELM_FIPS_IMAGE}" true)
 trap 'cleanup $HELM_CONTAINER_ID' EXIT

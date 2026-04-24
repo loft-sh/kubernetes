@@ -172,6 +172,8 @@ jobs:
               rm -f "./etcd-arm64"
               rm -f "./etcdctl-amd64"
               rm -f "./etcdctl-arm64"
+              rm -f "./etcdutl-amd64"
+              rm -f "./etcdutl-arm64"
               rm -f "./kine-amd64"
               rm -f "./kine-arm64"
               rm -f "./konnectivity-server-amd64"
