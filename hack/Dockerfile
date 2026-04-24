@@ -20,6 +20,7 @@ COPY --chown=kubernetes:kubernetes ./kube-scheduler-${TARGETARCH} /kubernetes/ku
 COPY --chown=kubernetes:kubernetes ./helm-${TARGETARCH} /kubernetes/helm
 COPY --chown=kubernetes:kubernetes ./etcd-${TARGETARCH} /kubernetes/etcd
 COPY --chown=kubernetes:kubernetes ./etcdctl-${TARGETARCH} /kubernetes/etcdctl
+COPY --chown=kubernetes:kubernetes ./etcdutl-${TARGETARCH} /kubernetes/etcdutl
 COPY --chown=kubernetes:kubernetes ./kine-${TARGETARCH} /kubernetes/kine
 COPY --chown=kubernetes:kubernetes ./konnectivity-server-${TARGETARCH} /kubernetes/konnectivity-server
 COPY --chown=kubernetes:kubernetes ./kubernetes-*-amd64.tar.gz /kubernetes/
