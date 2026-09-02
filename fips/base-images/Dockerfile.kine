@@ -8,7 +8,9 @@ RUN apt-get update -y && \
 # No default: the workflow always passes this, and a fallback would build a stale release.
 ARG KINE_VERSION
 WORKDIR /
-RUN git -c advice.detachedHead=false clone -b $KINE_VERSION --depth=1 https://github.com/rancher/kine.git
+# loft-sh/kine, not upstream: KINE_VERSION is a fork tag and the fork carries
+# patches the non-FIPS bundle already ships. Module path is unchanged upstream.
+RUN git -c advice.detachedHead=false clone -b $KINE_VERSION --depth=1 https://github.com/loft-sh/kine.git
 
 WORKDIR /kine
 RUN go version
