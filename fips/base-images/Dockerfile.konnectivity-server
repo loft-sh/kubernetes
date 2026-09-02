@@ -5,9 +5,11 @@ RUN apt-get update -y && \
   apt-get install -y --no-install-recommends \
   git;
 
-ARG KONNECTIVITY_SERVER_VERSION=v0.32.0
+# Name must match the manifest key in hack/kubernetes-v1.X, which the build
+# workflow passes through as a --build-arg. A mismatch is silently ignored.
+ARG KONNECTIVITY_VERSION
 WORKDIR /
-RUN git -c advice.detachedHead=false clone -b $KONNECTIVITY_SERVER_VERSION --depth=1 https://github.com/kubernetes-sigs/apiserver-network-proxy.git
+RUN git -c advice.detachedHead=false clone -b $KONNECTIVITY_VERSION --depth=1 https://github.com/kubernetes-sigs/apiserver-network-proxy.git
 
 WORKDIR /apiserver-network-proxy
 RUN go version
