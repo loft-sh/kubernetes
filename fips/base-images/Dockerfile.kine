@@ -5,7 +5,8 @@ RUN apt-get update -y && \
   apt-get install -y --no-install-recommends \
   git;
 
-ARG KINE_VERSION=v0.13.8
+# No default: the workflow always passes this, and a fallback would build a stale release.
+ARG KINE_VERSION
 WORKDIR /
 RUN git -c advice.detachedHead=false clone -b $KINE_VERSION --depth=1 https://github.com/rancher/kine.git
 
