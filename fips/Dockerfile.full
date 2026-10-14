@@ -18,7 +18,8 @@ LABEL description="Kubernetes control plane components (apiserver, controller-ma
 
 ENV OPENSSL_CONF=/etc/pki/tls/openssl_fips.cnf
 
-ARG K8S_VERSION="v1.33.0"
+# No default: the workflow always passes this, and a fallback would label a stale release.
+ARG K8S_VERSION
 
 RUN microdnf install -y \
       ca-certificates \
