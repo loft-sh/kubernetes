@@ -1,13 +1,16 @@
-ARG GO_VERSION=1.26
+ARG GO_VERSION=1.26.8
 FROM docker.io/library/golang:${GO_VERSION}-bookworm AS build
 
 RUN apt-get update -y && \
   apt-get install -y --no-install-recommends \
   git;
 
-ARG KINE_VERSION=v0.13.8
+# No default: the workflow always passes this, and a fallback would build a stale release.
+ARG KINE_VERSION
 WORKDIR /
-RUN git -c advice.detachedHead=false clone -b $KINE_VERSION --depth=1 https://github.com/rancher/kine.git
+# loft-sh/kine, not upstream: KINE_VERSION is a fork tag and the fork carries
+# patches the non-FIPS bundle already ships. Module path is unchanged upstream.
+RUN git -c advice.detachedHead=false clone -b $KINE_VERSION --depth=1 https://github.com/loft-sh/kine.git
 
 WORKDIR /kine
 RUN go version

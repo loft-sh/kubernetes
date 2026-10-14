@@ -1,11 +1,12 @@
-ARG GO_VERSION=1.26
+ARG GO_VERSION=1.26.8
 FROM docker.io/library/golang:${GO_VERSION}-bookworm AS build
 
 RUN apt-get update -y && \
   apt-get install -y --no-install-recommends \
   git;
 
-ARG ETCD_VERSION=v3.5.21
+# No default: the workflow always passes this, and a fallback would build a stale release.
+ARG ETCD_VERSION
 WORKDIR /
 RUN git -c advice.detachedHead=false clone -b $ETCD_VERSION --depth=1 https://github.com/etcd-io/etcd.git
 
