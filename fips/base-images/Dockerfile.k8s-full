@@ -1,4 +1,4 @@
-ARG GO_VERSION=1.26.8
+ARG GO_VERSION=1.26.10
 FROM docker.io/library/golang:${GO_VERSION}-bookworm AS build
 
 # No defaults for KUBERNETES_VERSION, CNI_PLUGINS_VERSION, RUNC_VERSION and CONTAINERD_VERSION:
@@ -48,7 +48,7 @@ RUN \
 
 
 FROM docker.io/library/golang:${GO_VERSION}-bookworm AS build-cni-plugins
-ARG GO_VERSION=1.26.8
+ARG GO_VERSION=1.26.10
 ARG CNI_PLUGINS_VERSION
 ARG CNI_META_PLUGINS="bandwidth firewall portmap"
 ARG CNI_MAIN_PLUGINS="bridge loopback"
@@ -100,7 +100,7 @@ RUN set -ex; \
 
 
 FROM docker.io/library/golang:${GO_VERSION}-bookworm AS build-runc
-ARG GO_VERSION=1.26.8
+ARG GO_VERSION=1.26.10
 ARG RUNC_VERSION
 
 RUN apt-get update -y && \
@@ -137,7 +137,7 @@ RUN \
 
 
 FROM docker.io/library/golang:${GO_VERSION}-bookworm AS build-containerd
-ARG GO_VERSION=1.26.8
+ARG GO_VERSION=1.26.10
 ARG CONTAINERD_VERSION
 
 
