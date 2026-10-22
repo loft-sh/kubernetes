@@ -3,6 +3,11 @@ name: Build K8s FIPS Version
 on:
   workflow_call:
     inputs:
+      force:
+        required: false
+        type: boolean
+        default: false
+        description: 'Rebuild every image even when it already exists'
       k8s-version:
         required: true
         type: string
@@ -52,6 +57,7 @@ jobs:
     uses: ./.github/workflows/build-and-push-k8s-sub-image.yaml
     with:
       k8s-minor-version: ${{ needs.build-k8s-versions.outputs.k8s-minor-version }}
+      force: ${{ inputs.force }}
       k8s-version: ${{ needs.build-k8s-versions.outputs.k8s-version }}
     secrets: inherit
 
@@ -62,6 +68,7 @@ jobs:
       image_name: ghcr.io/loft-sh/helm-fips
       dockerfile_path: ./fips/base-images/Dockerfile.helm
       k8s-minor-version: ${{ needs.build-k8s-versions.outputs.k8s-minor-version }}
+      force: ${{ inputs.force }}
       component_name: HELM_VERSION
     secrets: inherit
 
@@ -72,6 +79,7 @@ jobs:
       image_name: ghcr.io/loft-sh/etcd-fips
       dockerfile_path: ./fips/base-images/Dockerfile.etcd
       k8s-minor-version: ${{ needs.build-k8s-versions.outputs.k8s-minor-version }}
+      force: ${{ inputs.force }}
       component_name: ETCD_VERSION
     secrets: inherit
 
@@ -82,6 +90,7 @@ jobs:
       image_name: ghcr.io/loft-sh/kine-fips
       dockerfile_path: ./fips/base-images/Dockerfile.kine
       k8s-minor-version: ${{ needs.build-k8s-versions.outputs.k8s-minor-version }}
+      force: ${{ inputs.force }}
       component_name: KINE_VERSION
     secrets: inherit
 
@@ -92,6 +101,7 @@ jobs:
       image_name: ghcr.io/loft-sh/konnectivity-server-fips
       dockerfile_path: ./fips/base-images/Dockerfile.konnectivity-server
       k8s-minor-version: ${{ needs.build-k8s-versions.outputs.k8s-minor-version }}
+      force: ${{ inputs.force }}
       component_name: KONNECTIVITY_VERSION
     secrets: inherit
 

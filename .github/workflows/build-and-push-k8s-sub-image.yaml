@@ -13,6 +13,11 @@ on:
         required: true
         type: string
         description: 'Kubernetes version, e.g. v1.33.0'
+      force:
+        required: false
+        type: boolean
+        default: false
+        description: 'Rebuild even when the image already exists'
       k8s-minor-version:
         required: true
         type: string
@@ -79,7 +84,7 @@ jobs:
 
       - name: Build and push image
         id: push
-        if: ${{ steps.image-exists.outcome == 'failure' }}
+        if: ${{ steps.image-exists.outcome == 'failure' || inputs.force }}
         uses: docker/build-push-action@v6
         with:
           platforms: linux/amd64,linux/arm64
