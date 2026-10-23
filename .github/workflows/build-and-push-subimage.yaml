@@ -98,7 +98,7 @@ jobs:
 
       - name: Attest k8s image
         uses: actions/attest-build-provenance@v2
-        if: ${{ steps.image-exists.outcome == 'failure' || inputs.force }}
+        if: ${{ steps.push.outcome == 'success' }}
         id: attest
         with:
           subject-name: ${{ inputs.image_name }}
