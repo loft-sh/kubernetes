@@ -102,7 +102,7 @@ jobs:
 
       - name: Attest k8s image
         uses: actions/attest-build-provenance@v2
-        if: ${{ steps.image-exists.outcome == 'failure' }}
+        if: ${{ steps.image-exists.outcome == 'failure' || inputs.force }}
         id: attest
         with:
           subject-name: ghcr.io/loft-sh/kubernetes-node-fips
