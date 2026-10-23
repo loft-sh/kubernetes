@@ -90,6 +90,7 @@ jobs:
       fail-fast: false
     with:
       k8s-version: ${{ matrix.version }}
+      force: ${{ github.event.inputs.force == 'true' }}
     permissions:
       id-token: write
       packages: write
