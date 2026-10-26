@@ -1,5 +1,5 @@
 # Final Alpine-based image
-FROM alpine:3.18
+FROM alpine:3.24
 ARG TARGETARCH
 
 LABEL maintainer="vCluster Labs <support@vcluster.com>"
