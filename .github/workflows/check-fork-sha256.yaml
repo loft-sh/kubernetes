@@ -1,0 +1,21 @@
+name: Check fork binary checksums
+
+on:
+  pull_request:
+    paths:
+      - 'hack/**'
+      - '.github/workflows/check-fork-sha256.yaml'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: hack/check-fork-sha256.sh

@@ -20,6 +20,7 @@ VCLUSTER_TUNNEL_PATH=""
 # published, so the build accepts only the bytes recorded here. When an overlay
 # bumps KINE_VERSION or TAILSCALED_VERSION, add the new asset digests (the
 # "digest" field of the release asset in the GitHub API) or the build fails.
+# hack/check-fork-sha256.sh catches a missing entry on the pull request.
 fork_asset_sha256() {
   case "$1" in
     kine/v0.14.5/kine-amd64) echo 4f2caeed0ad09e130eb790b89438611aad14a94daf6d06981d91deb74c35a6cc ;;
