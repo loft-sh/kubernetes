@@ -10,7 +10,7 @@ ETCD_VERSION=""
 KINE_VERSION=""
 KONNECTIVITY_VERSION=""
 # Default; per-k8s overlays (hack/kubernetes-v1.X) may set TAILSCALED_VERSION to override.
-TAILSCALED_VERSION="v1.78.1-loft.11"
+TAILSCALED_VERSION="v1.78.1-loft.15"
 TARGETARCH="amd64"
 # When set, use this pre-built tailscaled binary instead of downloading from the fork's GitHub releases.
 VCLUSTER_TUNNEL_PATH=""
