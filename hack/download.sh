@@ -15,6 +15,44 @@ TARGETARCH="amd64"
 # When set, use this pre-built tailscaled binary instead of downloading from the fork's GitHub releases.
 VCLUSTER_TUNNEL_PATH=""
 
+# sha256 of every fork release binary this script downloads, keyed by
+# <repo>/<version>/<asset>. A fork release asset can be replaced after it is
+# published, so the build accepts only the bytes recorded here. When an overlay
+# bumps KINE_VERSION or TAILSCALED_VERSION, add the new asset digests (the
+# "digest" field of the release asset in the GitHub API) or the build fails.
+# hack/check-fork-sha256.sh catches a missing entry on the pull request.
+fork_asset_sha256() {
+  case "$1" in
+    kine/v0.14.5/kine-amd64) echo 4f2caeed0ad09e130eb790b89438611aad14a94daf6d06981d91deb74c35a6cc ;;
+    kine/v0.14.5/kine-arm64) echo 6bb2c7182bf135523fdafecee436e4a33a5de9077a9908b201c370974c13097d ;;
+    kine/v0.14.10/kine-amd64) echo 96d1ad0d4b205de0f6c5420706c7d6fadfaa69b174189faf5c002a42cd695317 ;;
+    kine/v0.14.10/kine-arm64) echo 576d1da09e852674219ed66afdcd6ec42d361dcae4b59ce7a3e1429d5211ec34 ;;
+    kine/v0.14.16.vcluster.3/kine-amd64) echo 782eafcec28db1a9d854b874b09b4a83c8189c31638dab54e8744326d998c243 ;;
+    kine/v0.14.16.vcluster.3/kine-arm64) echo a22b2ab3245b6eafd9de99d70fae2d136985adbee5f67bc58e0b5098f056796e ;;
+    kine/v0.17.2.vcluster.0/kine-amd64) echo 43269a40f13560911f485ff9cb3a02c5ebc8dc50451ebdd27b6d0b5c2f1e2c66 ;;
+    kine/v0.17.2.vcluster.0/kine-arm64) echo d6005e4d20124fbd1c8fa6d8f8a4a1d3b67641e77864ba941b4e7d4128e125db ;;
+    tailscale/v1.78.1-loft.11/tailscaled-linux-amd64) echo dcea869998d08d22c5f899eb878d30a17674e9a0b58a408f01a298cd872923d3 ;;
+    tailscale/v1.78.1-loft.11/tailscaled-linux-arm64) echo 009b65d563939613340c9ce856ef535efce90a90da7760e2a96b6d774cee2b8d ;;
+    tailscale/v1.96.4-loft.2/tailscaled-linux-amd64) echo 2efcc605350bee5d00d5dff3ad0cad7ae9091f47d66f42bdb28997cf4fe081c3 ;;
+    tailscale/v1.96.4-loft.2/tailscaled-linux-arm64) echo c08e7917f46d5119de69fbf748c0acb96d378d27c62ce798c17223cde6940a5d ;;
+    *) return 1 ;;
+  esac
+}
+
+# verify_fork_asset <repo> <version> <asset> <file> fails the build unless the
+# file matches the recorded sha256.
+verify_fork_asset() {
+  local expected
+  if ! expected=$(fork_asset_sha256 "$1/$2/$3"); then
+    echo "Error: no sha256 recorded for loft-sh/$1 $2 $3; add it to fork_asset_sha256 in hack/download.sh"
+    exit 1
+  fi
+  if ! echo "${expected}  $4" | sha256sum -c --quiet -; then
+    echo "Error: loft-sh/$1 $2 $3 does not match its recorded sha256 ${expected}"
+    exit 1
+  fi
+}
+
 # Parse command line arguments
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -187,6 +225,7 @@ else
     echo "Error: failed to download vcluster-tunnel ${TAILSCALED_VERSION} for ${TARGETARCH}"
     exit 1
   fi
+  verify_fork_asset tailscale "${TAILSCALED_VERSION}" "tailscaled-linux-${TARGETARCH}" ./vcluster-tunnel
 fi
 chmod +x ./vcluster-tunnel
 mv ./vcluster-tunnel ./release/vcluster-tunnel
@@ -298,6 +337,7 @@ if ! curl -fsS -L -o kine "https://github.com/loft-sh/kine/releases/download/${K
   echo "Error: failed to download kine ${KINE_VERSION} for ${TARGETARCH}"
   exit 1
 fi
+verify_fork_asset kine "${KINE_VERSION}" "kine-${TARGETARCH}" ./kine
 chmod +x kine
 cp kine ./kine-${TARGETARCH}
 mv kine ./release/kine
