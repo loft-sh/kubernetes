@@ -27,14 +27,22 @@ fork_asset_sha256() {
     kine/v0.14.5/kine-arm64) echo 6bb2c7182bf135523fdafecee436e4a33a5de9077a9908b201c370974c13097d ;;
     kine/v0.14.10/kine-amd64) echo 96d1ad0d4b205de0f6c5420706c7d6fadfaa69b174189faf5c002a42cd695317 ;;
     kine/v0.14.10/kine-arm64) echo 576d1da09e852674219ed66afdcd6ec42d361dcae4b59ce7a3e1429d5211ec34 ;;
+    kine/v0.14.10.vcluster.0/kine-amd64) echo 97ec69bd2e803634eae29fa1ad497276abc56517643ef43cb3dc43a34fa88381 ;;
+    kine/v0.14.10.vcluster.0/kine-arm64) echo d66ebd84847e76507ce2c1bd9f8db8aa69273c4bc4ee5e2fb33ac2a897d01d9f ;;
     kine/v0.14.16.vcluster.3/kine-amd64) echo 782eafcec28db1a9d854b874b09b4a83c8189c31638dab54e8744326d998c243 ;;
     kine/v0.14.16.vcluster.3/kine-arm64) echo a22b2ab3245b6eafd9de99d70fae2d136985adbee5f67bc58e0b5098f056796e ;;
+    kine/v0.14.16.vcluster.4/kine-amd64) echo 8ffd188135137048546c445439ad53ece55299001aeeea56048903eb4a2cddd6 ;;
+    kine/v0.14.16.vcluster.4/kine-arm64) echo 948e988426883994f3f4602e9c1b1a7afe7acdf49a56325c56a1baf10c0e0a58 ;;
     kine/v0.17.2.vcluster.0/kine-amd64) echo 43269a40f13560911f485ff9cb3a02c5ebc8dc50451ebdd27b6d0b5c2f1e2c66 ;;
     kine/v0.17.2.vcluster.0/kine-arm64) echo d6005e4d20124fbd1c8fa6d8f8a4a1d3b67641e77864ba941b4e7d4128e125db ;;
     tailscale/v1.78.1-loft.11/tailscaled-linux-amd64) echo dcea869998d08d22c5f899eb878d30a17674e9a0b58a408f01a298cd872923d3 ;;
     tailscale/v1.78.1-loft.11/tailscaled-linux-arm64) echo 009b65d563939613340c9ce856ef535efce90a90da7760e2a96b6d774cee2b8d ;;
+    tailscale/v1.78.1-loft.15/tailscaled-linux-amd64) echo 8cd198fef877c04588f13fdbb98e8063f8ab9a0547264a77559b89ff7a086a66 ;;
+    tailscale/v1.78.1-loft.15/tailscaled-linux-arm64) echo 083e214e6ab8b130ac8b2f9396d339410097c0a6ec929ef31ec0f5dce2d9799e ;;
     tailscale/v1.96.4-loft.2/tailscaled-linux-amd64) echo 2efcc605350bee5d00d5dff3ad0cad7ae9091f47d66f42bdb28997cf4fe081c3 ;;
     tailscale/v1.96.4-loft.2/tailscaled-linux-arm64) echo c08e7917f46d5119de69fbf748c0acb96d378d27c62ce798c17223cde6940a5d ;;
+    tailscale/v1.96.4-loft.3/tailscaled-linux-amd64) echo fab1f70e5ba5568e82734aff42d15a193c2c30af7ca01aec2cb46047cda4bc9d ;;
+    tailscale/v1.96.4-loft.3/tailscaled-linux-arm64) echo 35711b43a2f92be808d3b7caaad1960794a3e37cf9d2804bf7a909c4f4ce86ac ;;
     *) return 1 ;;
   esac
 }
