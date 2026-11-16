@@ -1,0 +1,81 @@
+# Rebuilds one Kubernetes version and publishes it under a tag of our own.
+#
+# release.yaml exists to fill in versions upstream has released and names each image after that
+# version, so it cannot republish a version we already have. This workflow is the manual escape
+# hatch for when a base-image fix has to reach customers before upstream cuts its next patch.
+#
+# It never touches a GitHub release and refuses to write a plain vX.Y.Z tag, so an existing
+# published image can't be overwritten from here.
+name: Republish Kubernetes image under a custom tag
+
+on:
+  workflow_dispatch:
+    inputs:
+      kubernetes_version:
+        description: The upstream Kubernetes version to build, e.g. v1.36.5. Must have a hack/kubernetes-vX.Y file
+        type: string
+        required: true
+      image_tag:
+        description: The tag to publish under, e.g. v1.36.5-patch.1. A plain vX.Y.Z is refused
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  republish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        env:
+          KUBERNETES_VERSION: ${{ inputs.kubernetes_version }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$IMAGE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::$IMAGE_TAG is a plain upstream version. Publishing it here would overwrite the image release.yaml owns, pick a distinct tag"
+            exit 1
+          fi
+
+          cd hack
+
+          TRIMMED=$(echo "$KUBERNETES_VERSION" | sed -E 's/^(v[0-9]+\.[0-9]+)\.[0-9]+$/\1/')
+          if [ ! -f "./kubernetes-${TRIMMED}" ]; then
+            echo "::error::no ./kubernetes-${TRIMMED} file, so $KUBERNETES_VERSION has no component pins to build from"
+            exit 1
+          fi
+
+          ./download.sh --kubernetes-version "$KUBERNETES_VERSION" --target-arch amd64
+          ./download.sh --kubernetes-version "$KUBERNETES_VERSION" --target-arch arm64
+
+          # The two images differ only by what the build context still holds, so the order of these
+          # removals is what separates them. -full keeps the node bundles, the control plane one does not.
+          rm -f "./kubernetes-$KUBERNETES_VERSION-amd64-full.tar.gz" "./kubernetes-$KUBERNETES_VERSION-arm64-full.tar.gz"
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            -t "ghcr.io/loft-sh/kubernetes:$IMAGE_TAG-full" \
+            --push .
+
+          rm -f "./kubernetes-$KUBERNETES_VERSION-amd64.tar.gz" "./kubernetes-$KUBERNETES_VERSION-arm64.tar.gz"
+          docker buildx build \
+            --platform linux/amd64,linux/arm64 \
+            -t "ghcr.io/loft-sh/kubernetes:$IMAGE_TAG" \
+            --push .
+
+          echo "Published ghcr.io/loft-sh/kubernetes:$IMAGE_TAG and :$IMAGE_TAG-full from $KUBERNETES_VERSION"
