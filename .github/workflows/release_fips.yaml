@@ -84,6 +84,7 @@ jobs:
 
   build-k8s-versions:
     needs: generate-matrix
+    if: ${{ fromJson(needs.generate-matrix.outputs.matrix).version[0] != null }}
     uses: ./.github/workflows/build-fips-for-version.yaml
     strategy:
       matrix: ${{ fromJson(needs.generate-matrix.outputs.matrix) }}
