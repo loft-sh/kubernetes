@@ -39,6 +39,10 @@ fork_asset_sha256() {
     kine/v0.14.16.vcluster.4/kine-arm64) echo 948e988426883994f3f4602e9c1b1a7afe7acdf49a56325c56a1baf10c0e0a58 ;;
     kine/v0.17.2.vcluster.0/kine-amd64) echo 43269a40f13560911f485ff9cb3a02c5ebc8dc50451ebdd27b6d0b5c2f1e2c66 ;;
     kine/v0.17.2.vcluster.0/kine-arm64) echo d6005e4d20124fbd1c8fa6d8f8a4a1d3b67641e77864ba941b4e7d4128e125db ;;
+    kine/v0.16.5.vcluster.2/kine-amd64) echo 398759c0ddfca4acd16af45253910299461a1d552c8bc6788c1c471079b4d140 ;;
+    kine/v0.16.5.vcluster.2/kine-arm64) echo 00ca19b0d002e10bac159abadf208d528c04ccec800b8c317eb05bc4fafe0457 ;;
+    kine/v0.17.5.vcluster.0/kine-amd64) echo bf96ef63c0da30ea138a9f239b690acbfdf25f155713f1c9a73008e10d5d07b5 ;;
+    kine/v0.17.5.vcluster.0/kine-arm64) echo 06035d50ed445a10e390365623da10514510536db1729972adbafaa8d63ec919 ;;
     tailscale/v1.78.1-loft.11/tailscaled-linux-amd64) echo dcea869998d08d22c5f899eb878d30a17674e9a0b58a408f01a298cd872923d3 ;;
     tailscale/v1.78.1-loft.11/tailscaled-linux-arm64) echo 009b65d563939613340c9ce856ef535efce90a90da7760e2a96b6d774cee2b8d ;;
     tailscale/v1.78.1-loft.15/tailscaled-linux-amd64) echo 8cd198fef877c04588f13fdbb98e8063f8ab9a0547264a77559b89ff7a086a66 ;;
