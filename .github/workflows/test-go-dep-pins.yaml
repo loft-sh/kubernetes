@@ -1,0 +1,147 @@
+name: Test Go dependency pins
+
+# Gates a change to K8S_GO_DEP_PINS before it is merged and published: for
+# each minor version whose pins change, the latest patch release is built from
+# source with the pins and must pass the Kubernetes unit tests first, then the
+# full conformance suite on kind (the same e2e-k8s.sh upstream's
+# ci-kubernetes-kind-conformance job runs). Nothing is published.
+#
+# Make the "Go dependency pins tested" check required on main. It runs on every
+# pull request and passes right away when no pins change, so the requirement
+# does not block other pull requests.
+
+on:
+  pull_request:
+  workflow_dispatch:
+    inputs:
+      k8s-minor-version:
+        description: Minor version whose pins to test, e.g. v1.35 (its latest patch release is tested)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+env:
+  K8S_DIR: k8s-src
+
+jobs:
+  detect:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Find the pins to test
+        id: matrix
+        env:
+          BASE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
+          ONLY_MINOR: ${{ inputs.k8s-minor-version }}
+        run: |
+          matrix=$(./hack/go-dep-pins-matrix.sh)
+          echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
+          echo "### Pins to test" >> "$GITHUB_STEP_SUMMARY"
+          echo "${matrix}" | jq -r '.include[] | "- \(.version): \(.pins)"' >> "$GITHUB_STEP_SUMMARY"
+
+  unit:
+    needs: detect
+    if: fromJson(needs.detect.outputs.matrix).include[0] != null
+    name: unit (${{ matrix.version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.detect.outputs.matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Clone Kubernetes ${{ matrix.version }}
+        env:
+          VERSION: ${{ matrix.version }}
+        run: git -c advice.detachedHead=false clone -b "$VERSION" --depth=1 https://github.com/kubernetes/kubernetes.git "$K8S_DIR"
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5.6.0
+        with:
+          go-version-file: ${{ env.K8S_DIR }}/.go-version
+          cache: false
+
+      - name: Apply pins
+        working-directory: ${{ env.K8S_DIR }}
+        env:
+          PINS: ${{ matrix.pins }}
+        run: ../hack/pin-go-deps.sh "$PINS"
+
+      - name: Unit tests
+        working-directory: ${{ env.K8S_DIR }}
+        run: make test
+
+  conformance:
+    needs: [detect, unit]
+    name: conformance (${{ matrix.version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.detect.outputs.matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Clone Kubernetes ${{ matrix.version }}
+        env:
+          VERSION: ${{ matrix.version }}
+        run: git -c advice.detachedHead=false clone -b "$VERSION" --depth=1 https://github.com/kubernetes/kubernetes.git "$K8S_DIR"
+
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5.6.0
+        with:
+          go-version-file: ${{ env.K8S_DIR }}/.go-version
+          cache: false
+
+      - name: Apply pins
+        working-directory: ${{ env.K8S_DIR }}
+        env:
+          PINS: ${{ matrix.pins }}
+        run: ../hack/pin-go-deps.sh "$PINS"
+
+      - name: Full conformance on kind
+        env:
+          ARTIFACTS: ${{ github.workspace }}/artifacts
+        run: ./hack/run-conformance.sh "$K8S_DIR"
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: conformance-${{ matrix.version }}
+          path: artifacts
+          if-no-files-found: ignore
+
+  result:
+    name: Go dependency pins tested
+    needs: [detect, unit, conformance]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check the results
+        run: |
+          echo "detect=${{ needs.detect.result }} unit=${{ needs.unit.result }} conformance=${{ needs.conformance.result }}"
+          [ "${{ needs.detect.result }}" = success ] || exit 1
+          for r in "${{ needs.unit.result }}" "${{ needs.conformance.result }}"; do
+            [ "$r" = success ] || [ "$r" = skipped ] || exit 1
+          done
