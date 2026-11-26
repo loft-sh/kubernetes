@@ -104,12 +104,18 @@ jobs:
 
               echo "Building release for Kubernetes $VERSION..."
               
-              # Download for amd64
-              ./download.sh --kubernetes-version $VERSION --target-arch amd64
-              
-              # Download for arm64
-              ./download.sh --kubernetes-version $VERSION --target-arch arm64
-              
+              # Download (or build from source, with Go dependency pins) for amd64 and arm64.
+              # A version that fails, e.g. a pin that does not fit an older patch release,
+              # is skipped and reported so the remaining versions still get released.
+              if ! ./download.sh --kubernetes-version $VERSION --target-arch amd64 \
+                || ! ./download.sh --kubernetes-version $VERSION --target-arch arm64; then
+                echo "::error::Failed to get the binaries of Kubernetes $VERSION, skipping it"
+                FAILED_VERSIONS="${FAILED_VERSIONS:-} $VERSION"
+                # the image build copies every kubernetes-*.tar.gz, so none may be left behind
+                rm -f ./kubernetes-$VERSION-*.tar.gz ./kubernetes-$VERSION.txt
+                continue
+              fi
+
               # Create a new release with the archives as assets
               if gh release view $VERSION --repo ${{ github.repository }} &>/dev/null; then
                 gh release upload "$VERSION" \
@@ -182,3 +188,8 @@ jobs:
               echo "Release for Kubernetes $VERSION already exists, skipping"
             fi
           done
+
+          if [ -n "${FAILED_VERSIONS:-}" ]; then
+            echo "::error::Failed to release Kubernetes${FAILED_VERSIONS}"
+            exit 1
+          fi

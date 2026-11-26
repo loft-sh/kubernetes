@@ -147,13 +147,30 @@ if [ -z "$PAUSE_IMAGE_VERSION" ]; then
   exit 1
 fi
 
-# With K8S_GO_DEP_PINS set in the overlay, the Kubernetes binaries are built
-# from source with those Go dependency bumps (CVE fixes upstream has not
-# shipped yet) instead of downloaded from dl.k8s.io.
+# When a Go dependency pin from the overlay (a CVE fix upstream has not
+# shipped yet) applies to this version, the Kubernetes binaries are built from
+# source with the pins instead of downloaded from dl.k8s.io.
 K8S_SRC_DIR="./k8s-src-${TARGETARCH}"
 # The overlay lists the pins as a bash array (one per line, with comments);
 # join them into one space-separated string.
 K8S_GO_DEP_PINS="${K8S_GO_DEP_PINS[*]:-}"
+if [ -n "${K8S_GO_DEP_PINS}" ]; then
+  # Keep only the pins that raise a dependency of this version, so a version
+  # that already ships them keeps the upstream binaries.
+  GO_MOD_DIR=$(mktemp -d)
+  if ! curl -fsSL -o "${GO_MOD_DIR}/go.mod" "https://raw.githubusercontent.com/kubernetes/kubernetes/${KUBERNETES_VERSION}/go.mod"; then
+    echo "Error: failed to read go.mod of Kubernetes ${KUBERNETES_VERSION}"
+    exit 1
+  fi
+  if ! APPLIED_PINS=$(cd "${GO_MOD_DIR}" && PIN_GO_DEPS_DRY_RUN=1 "${OLDPWD}/pin-go-deps.sh" "${K8S_GO_DEP_PINS}"); then
+    echo "Error: the Go dependency pins do not fit Kubernetes ${KUBERNETES_VERSION}"
+    exit 1
+  fi
+  rm -rf "${GO_MOD_DIR}"
+  # shellcheck disable=SC2086 # joins the one-per-line pins into one line
+  # shellcheck disable=SC2086 # joins the one-per-line pins into one line
+  K8S_GO_DEP_PINS=$(echo ${APPLIED_PINS})
+fi
 if [ -n "${K8S_GO_DEP_PINS}" ]; then
   echo "Building Kubernetes ${KUBERNETES_VERSION} from source with Go dependency pins: ${K8S_GO_DEP_PINS}..."
   rm -rf "${K8S_SRC_DIR}"

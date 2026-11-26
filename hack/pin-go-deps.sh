@@ -9,7 +9,16 @@
 #
 # Usage (from the kubernetes source root):
 #   pin-go-deps.sh "golang.org/x/net@v0.47.0 google.golang.org/grpc@v1.72.1"
+#
+# With PIN_GO_DEPS_DRY_RUN=1 it only needs go.mod in the current directory:
+# it changes nothing and prints the pins that would apply, one per line, on
+# stdout (the log goes to stderr).
 set -euo pipefail
+
+dry_run="${PIN_GO_DEPS_DRY_RUN:-}"
+if [ -n "$dry_run" ]; then
+  exec 3>&1 1>&2
+fi
 
 # newer <a> <b>: succeeds when release version a is newer than b.
 newer() {
@@ -46,6 +55,10 @@ for pin in ${1:-}; do
   fi
 
   echo "pin ${mod}: ${have} -> ${want}"
+  if [ -n "$dry_run" ]; then
+    echo "$pin" >&3
+    continue
+  fi
   ./hack/pin-dependency.sh "$mod" "$want"
   applied=1
 done
