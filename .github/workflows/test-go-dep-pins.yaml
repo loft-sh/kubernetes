@@ -47,7 +47,7 @@ jobs:
           BASE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
           ONLY_MINOR: ${{ inputs.k8s-minor-version }}
         run: |
-          matrix=$(./hack/go-dep-pins-matrix.sh)
+          matrix=$(./hack/list-pins-to-test.sh)
           echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
           echo "### Pins to test" >> "$GITHUB_STEP_SUMMARY"
           echo "${matrix}" | jq -r '.include[] | "- \(.version): \(.pins)"' >> "$GITHUB_STEP_SUMMARY"
