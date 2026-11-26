@@ -1,15 +1,13 @@
 name: Kubernetes source with Go dependency pins
 description: >-
   Clones a Kubernetes release, sets up the Go version that release builds
-  with (.go-version) and applies Go dependency pins with hack/pin-go-deps.sh.
-  Needs this repository checked out first.
+  with (.go-version) and applies the Go dependency pins of its minor version
+  (K8S_GO_DEP_PINS in hack/kubernetes-v1.X, none when the overlay sets none)
+  with hack/pin-go-deps.sh. Needs this repository checked out first.
 
 inputs:
   version:
     description: Kubernetes release tag to clone, e.g. v1.36.7.
-    required: true
-  pins:
-    description: Space-separated <module>@<version> pins to apply.
     required: true
   dir:
     description: Directory to clone Kubernetes into, relative to the workspace.
@@ -36,5 +34,5 @@ runs:
       shell: bash
       working-directory: ${{ inputs.dir }}
       env:
-        PINS: ${{ inputs.pins }}
-      run: "${GITHUB_WORKSPACE}/hack/pin-go-deps.sh \"$PINS\""
+        VERSION: ${{ inputs.version }}
+      run: "${GITHUB_WORKSPACE}/hack/apply-overlay-pins.sh \"$VERSION\""

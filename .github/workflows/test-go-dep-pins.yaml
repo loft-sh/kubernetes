@@ -17,9 +17,14 @@ on:
   workflow_dispatch:
     inputs:
       k8s-minor-version:
-        description: Minor version whose pins to test, e.g. v1.35 (its latest patch release is tested)
+        description: Minor version to test, e.g. v1.35, with or without pins (its latest patch release is tested)
         required: true
         type: string
+      vulncheck-only:
+        description: Only run the vulnerability check, not the unit and conformance tests
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -51,13 +56,13 @@ jobs:
         run: |
           matrix=$(./hack/list-pins-to-test.sh)
           echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
-          echo "### Pins to test" >> "$GITHUB_STEP_SUMMARY"
-          echo "${matrix}" | jq -r '.include[] | "- \(.version): \(.pins)"' >> "$GITHUB_STEP_SUMMARY"
+          echo "### Kubernetes versions to test" >> "$GITHUB_STEP_SUMMARY"
+          echo "${matrix}" | jq -r '.version[] | "- \(.)"' >> "$GITHUB_STEP_SUMMARY"
 
   vulncheck:
     needs: detect
-    if: fromJson(needs.detect.outputs.matrix).include[0] != null
-    name: K8s vulnerability check (${{ matrix.version }})
+    if: fromJson(needs.detect.outputs.matrix).version[0] != null
+    name: K8s vulnerability check
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -69,11 +74,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Kubernetes ${{ matrix.version }} with the pins
+      - name: Kubernetes ${{ matrix.version }} with its pins
         uses: ./.github/actions/k8s-pinned-source
         with:
           version: ${{ matrix.version }}
-          pins: ${{ matrix.pins }}
           dir: ${{ env.K8S_DIR }}
 
       - name: No reachable vulnerabilities
@@ -81,8 +85,8 @@ jobs:
 
   unit:
     needs: [detect, vulncheck]
-    if: fromJson(needs.detect.outputs.matrix).include[0] != null
-    name: K8s unit tests (${{ matrix.version }})
+    if: fromJson(needs.detect.outputs.matrix).version[0] != null && !inputs.vulncheck-only
+    name: K8s unit tests
     runs-on: large-8_32
     timeout-minutes: 240
     strategy:
@@ -94,11 +98,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Kubernetes ${{ matrix.version }} with the pins
+      - name: Kubernetes ${{ matrix.version }} with its pins
         uses: ./.github/actions/k8s-pinned-source
         with:
           version: ${{ matrix.version }}
-          pins: ${{ matrix.pins }}
           dir: ${{ env.K8S_DIR }}
 
       - name: Unit tests
@@ -107,8 +110,8 @@ jobs:
 
   conformance:
     needs: [detect, vulncheck]
-    if: fromJson(needs.detect.outputs.matrix).include[0] != null
-    name: K8s conformance tests (${{ matrix.version }})
+    if: fromJson(needs.detect.outputs.matrix).version[0] != null && !inputs.vulncheck-only
+    name: K8s conformance tests
     runs-on: large-8_32
     timeout-minutes: 300
     strategy:
@@ -120,11 +123,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Kubernetes ${{ matrix.version }} with the pins
+      - name: Kubernetes ${{ matrix.version }} with its pins
         uses: ./.github/actions/k8s-pinned-source
         with:
           version: ${{ matrix.version }}
-          pins: ${{ matrix.pins }}
           dir: ${{ env.K8S_DIR }}
 
       - name: Full conformance on kind
