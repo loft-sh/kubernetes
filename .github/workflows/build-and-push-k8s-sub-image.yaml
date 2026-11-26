@@ -61,14 +61,15 @@ jobs:
 
       - name: Read build args
         id: read-build-args
+        env:
+          K8S_VERSION: ${{ inputs.k8s-version }}
         run: |
           set -x
           cniVersion=$(./hack/parse-version.sh CNI_BINARIES_VERSION ./hack/kubernetes-${{ inputs.k8s-minor-version }})
           runcVersion=$(./hack/parse-version.sh RUNC_VERSION ./hack/kubernetes-${{ inputs.k8s-minor-version }})
           containerdVersion=$(./hack/parse-version.sh CONTAINERD_VERSION ./hack/kubernetes-${{ inputs.k8s-minor-version }})
-          # Optional bash array in the overlay; joined into one space-separated line.
-          # shellcheck disable=SC1090
-          goDepPins=$(. ./hack/kubernetes-${{ inputs.k8s-minor-version }}; echo "${K8S_GO_DEP_PINS[*]:-}")
+          # The Go dependency pins of this patch release, on one line (none when the overlay sets none).
+          goDepPins=$(./hack/pin-deps/pins-for.sh "$K8S_VERSION")
 
           echo "cniPluginsVersion=${cniVersion}" >> "$GITHUB_OUTPUT"
           echo "runcVersion=${runcVersion}" >> "$GITHUB_OUTPUT"
@@ -96,7 +97,7 @@ jobs:
           file: ./fips/base-images/Dockerfile.k8s-full
           context: ./fips/base-images
           build-contexts: |
-            kubernetes-deps=./kubernetes-deps
+            pin-deps=./hack/pin-deps
           sbom: true
           provenance: true
           tags: ${{ steps.image-name.outputs.image }}
