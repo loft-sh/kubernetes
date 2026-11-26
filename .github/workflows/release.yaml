@@ -24,6 +24,10 @@ on:
       kubernetes_version:
         description: A single Kubernetes version to rebuild, e.g. v1.36.7, even when its release exists (e.g. after its Go dependency pins change); the other inputs are then ignored
         type: string
+      dry_run:
+        description: Go through the whole build, including the e2e tests and the images, but publish nothing
+        type: boolean
+        default: false
 
 jobs:
   # The versions to build, one release job each, so a long build or test of one
@@ -46,9 +50,11 @@ jobs:
           FORCE: ${{ inputs.force }}
           MIN_MINOR: ${{ inputs.kubernetes_minor_version }}
           KUBERNETES_VERSION_INPUT: ${{ inputs.kubernetes_version }}
+          DRY_RUN: ${{ inputs.dry_run }}
         run: |
           matrix=$(./hack/pin-deps/ci.sh release-versions)
           echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
+          [ "$DRY_RUN" != true ] || echo "**Dry run: builds and tests, publishes nothing.**" >> "$GITHUB_STEP_SUMMARY"
           echo "### Kubernetes versions to build" >> "$GITHUB_STEP_SUMMARY"
           echo "${matrix}" | jq -r '.include[] | "- \(.version) on \(.runner)"' >> "$GITHUB_STEP_SUMMARY"
 
@@ -69,7 +75,9 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # Not in a dry run, so an image push could not go through by mistake.
       - name: Login to GitHub Container Registry
+        if: ${{ !inputs.dry_run }}
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
@@ -78,9 +86,11 @@ jobs:
 
       - name: Build, test and publish Kubernetes ${{ matrix.version }}
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # No token in a dry run, so a release upload could not go through by mistake.
+          GH_TOKEN: ${{ !inputs.dry_run && secrets.GITHUB_TOKEN || '' }}
           REPO: ${{ github.repository }}
           VERSION: ${{ matrix.version }}
+          DRY_RUN: ${{ inputs.dry_run }}
           # Outside hack/, the context of the image builds.
           ARTIFACTS: ${{ runner.temp }}/e2e-artifacts
         run: ./hack/release-version.sh "$VERSION"

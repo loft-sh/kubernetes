@@ -10,12 +10,19 @@
 #
 # Usage: release-version.sh <version, e.g. v1.36.7>
 # Env: REPO (owner/name of this repository) and GH_TOKEN for the release,
-#      ARTIFACTS for the e2e test results.
+#      ARTIFACTS for the e2e test results, DRY_RUN=true to do everything up to
+#      and including the image builds but publish nothing.
 set -euo pipefail
 
 version="${1:?usage: $0 <kubernetes version, e.g. v1.36.7>}"
 repo="${REPO:?REPO is required}"
+dry_run="${DRY_RUN:-false}"
 cd "$(dirname "$0")"
+push=(--push)
+if [ "$dry_run" = true ]; then
+  echo "Dry run: building and testing Kubernetes ${version}, publishing nothing"
+  push=()
+fi
 
 for arch in amd64 arm64; do
   if ! ./download.sh --kubernetes-version "$version" --target-arch "$arch"; then
@@ -38,7 +45,9 @@ archives=(
   "./kubernetes-${version}-amd64-full.tar.gz"
   "./kubernetes-${version}-arm64-full.tar.gz"
 )
-if gh release view "$version" --repo "$repo" &>/dev/null; then
+if [ "$dry_run" = true ]; then
+  echo "Dry run: would publish ${archives[*]} to the ${version} release of ${repo}"
+elif gh release view "$version" --repo "$repo" &>/dev/null; then
   gh release upload "$version" "${archives[@]}" --repo "$repo" --clobber
   # The notes list the component versions.
   gh release edit "$version" --notes-file "./kubernetes-${version}.txt" --repo "$repo"
@@ -51,8 +60,8 @@ fi
 # The full image copies every kubernetes-*-<arch>.tar.gz here: the node
 # archives, not the -full ones.
 rm -f "./kubernetes-${version}-amd64-full.tar.gz" "./kubernetes-${version}-arm64-full.tar.gz"
-docker buildx build --platform linux/amd64,linux/arm64 -t "ghcr.io/loft-sh/kubernetes:${version}-full" --push .
+docker buildx build --platform linux/amd64,linux/arm64 -t "ghcr.io/loft-sh/kubernetes:${version}-full" "${push[@]}" .
 
 # The control plane image has no node archives.
 rm -f "./kubernetes-${version}-amd64.tar.gz" "./kubernetes-${version}-arm64.tar.gz"
-docker buildx build --platform linux/amd64,linux/arm64 -t "ghcr.io/loft-sh/kubernetes:${version}" --push .
+docker buildx build --platform linux/amd64,linux/arm64 -t "ghcr.io/loft-sh/kubernetes:${version}" "${push[@]}" .

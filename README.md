@@ -127,6 +127,12 @@ The FIPS build always compiles from source and applies the same pins, but its re
 
   A rebuild with `force` rebuilds every patch release as before, but only the ones a pin applies to are built from source and e2e-tested; the others keep the dl.k8s.io binaries. `release.yaml` builds each version in its own job (`hack/release-version.sh`), so one version cannot hold up or time out the others: a version that has pins, which is built from source and e2e-tested, runs on a `large-8_32` runner (8 vCPUs, 32 GB RAM, 300 GB disk), the others on `ubuntu-latest`. This holds for the daily build, `force` and `kubernetes_version` alike.
 
+  Add `-f dry_run=true` to go through the whole build, including the e2e tests and the image builds, but publish nothing: no release upload, no image push, and the job gets neither a registry login nor a GitHub token. With `--ref <branch>` it tries out changes to the release itself before they are merged:
+
+  ```bash
+  gh workflow run release.yaml --ref <branch> -f kubernetes_version=v1.36.7 -f dry_run=true
+  ```
+
 ## Maintainer
 
 This project is maintained by [Loft Labs Inc](https://loft.sh)
