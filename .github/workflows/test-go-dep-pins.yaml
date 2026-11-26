@@ -80,7 +80,7 @@ jobs:
           version: ${{ matrix.version }}
           dir: ${{ env.K8S_DIR }}
 
-      - name: No reachable vulnerabilities
+      - name: Check vulnerabilities
         run: ./kubernetes-deps/ci.sh vulncheck "$K8S_DIR"
 
   unit:
