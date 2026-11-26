@@ -27,7 +27,9 @@ on:
 
 jobs:
   build-missing-k8s-versions:
-    runs-on: ubuntu-latest
+    # Rebuilding every tag (force) builds many versions, some from source and
+    # e2e-tested, in this one job: give it 8 vCPUs, 32 GB RAM and 300 GB disk.
+    runs-on: ${{ inputs.force == 'true' && 'large-8_32' || 'ubuntu-latest' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -133,9 +135,23 @@ jobs:
                 echo "::error::Failed to get the binaries of Kubernetes $VERSION, skipping it"
                 FAILED_VERSIONS="${FAILED_VERSIONS:-} $VERSION"
                 # the image build copies every kubernetes-*.tar.gz, so none may be left behind
-                rm -f ./kubernetes-$VERSION-*.tar.gz ./kubernetes-$VERSION.txt
+                rm -f ./kubernetes-$VERSION-*.tar.gz ./kubernetes-$VERSION.txt ./kubernetes-$VERSION.go-dep-pins
                 continue
               fi
+
+              # Binaries built from source with Go dependency pins must pass the
+              # Kubernetes e2e tests before anything of this version is published;
+              # dl.k8s.io binaries are released as they are.
+              if [ -s "./kubernetes-$VERSION.go-dep-pins" ]; then
+                echo "Kubernetes $VERSION is built from source with Go dependency pins: $(cat "./kubernetes-$VERSION.go-dep-pins"), running the e2e tests..."
+                if ! ./pin-deps/ci.sh release-e2e "$VERSION"; then
+                  echo "::error::Kubernetes $VERSION, built from source with Go dependency pins, failed the e2e tests, skipping it"
+                  FAILED_VERSIONS="${FAILED_VERSIONS:-} $VERSION"
+                  rm -f ./kubernetes-$VERSION-*.tar.gz ./kubernetes-$VERSION.txt ./kubernetes-$VERSION.go-dep-pins
+                  continue
+                fi
+              fi
+              rm -f "./kubernetes-$VERSION.go-dep-pins"
 
               # Create a new release with the archives as assets
               if gh release view $VERSION --repo ${{ github.repository }} &>/dev/null; then
@@ -214,3 +230,11 @@ jobs:
             echo "::error::Failed to release Kubernetes${FAILED_VERSIONS}"
             exit 1
           fi
+
+      - name: Upload e2e test results
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
+        with:
+          name: release-e2e
+          path: hack/e2e-artifacts
+          if-no-files-found: ignore

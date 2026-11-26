@@ -6,3 +6,5 @@
 /hack/*.tar.gz
 /hack/k8s-src-*
 .DS_Store
+/hack/e2e-artifacts
+/hack/kubernetes-*.go-dep-pins

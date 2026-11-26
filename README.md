@@ -99,9 +99,27 @@ How the pins apply, in short: **an entry applies to its `<since>` patch release 
 | v1.36.6 | `golang.org/x/net` |
 | v1.36.7, v1.36.8, ... | `golang.org/x/net` and `google.golang.org/grpc` |
 
+How the regular release builds a patch release:
+
+```mermaid
+flowchart TD
+    start([Build patch release vX.Y.Z]) --> pins["pins-for.sh: entries of hack/kubernetes-vX.Y<br/>with since &le; vX.Y.Z"]
+    pins --> any{Any pin?}
+    any -- no --> copy[Download the dl.k8s.io binaries]
+    any -- yes --> raises{"Does a pin raise a dependency<br/>in the go.mod of vX.Y.Z?"}
+    raises -- "no, upstream already ships it" --> copy
+    raises -- yes --> source["Build from source in kube-cross<br/>with the pins that raise a dependency"]
+    source --> e2e{"e2e tests on kind<br/>(pull-kubernetes-e2e-kind specs + conformance)"}
+    e2e -- pass --> publish[Publish the release archives and images]
+    e2e -- fail --> skip["Skip vX.Y.Z, publish nothing for it,<br/>fail the run at the end"]
+    copy --> publish
+```
+
+The FIPS build always compiles from source and applies the same pins.
+
 - New patch releases, which the daily build picks up on its own, inherit the pins of earlier entries, so a fix carries over without a new entry. A pin is a minimum version: `hack/pin-deps/pin-go-deps.sh` skips it where upstream already ships the same or a newer version, so a pin never downgrades and stops applying once upstream catches up (the build log says it can be removed). When the same module is pinned more than once, the highest version wins. `hack/pin-deps/pins-for.sh v1.36.7` prints the pins of a version.
 - A pin must name a module the Kubernetes version depends on and a release version (`vX.Y.Z`, not a pre-release or pseudo-version), and `<since>` must be a patch release of that minor version; otherwise the build fails.
-- When a pin raises a dependency of the version being built, the regular build compiles kube-apiserver, kube-controller-manager, kube-scheduler, kubelet, kubeadm and kubectl from source (`hack/pin-deps/Dockerfile`) instead of downloading them from dl.k8s.io; a version no pin applies to, or that already ships every pinned version, keeps the dl.k8s.io binaries. The FIPS build always compiles from source and applies the same pins.
+- When a pin raises a dependency of the version being built, the regular build compiles kube-apiserver, kube-controller-manager, kube-scheduler, kubelet, kubeadm and kubectl from source (`hack/pin-deps/Dockerfile`) instead of downloading them from dl.k8s.io; a version no pin applies to, or that already ships every pinned version, keeps the dl.k8s.io binaries. Before a version built from source is published, `release.yaml` runs the same e2e tests as the pull request gate on it (`hack/pin-deps/ci.sh release-e2e`); a version that fails them is skipped and reported, and the test results are uploaded as the `release-e2e` artifact.
 - Pins cover only the Kubernetes binaries. For containerd, runc, etcd, helm and the rest, bump their version in the overlay.
 - A pull request that changes the pins runs `.github/workflows/test-go-dep-pins.yaml` before anything is published, on the `<since>` patch release of each new or changed entry and on the latest patch release of that minor version, which inherits every entry. Each, with its pins applied and the Go version it builds with (`.go-version`), must first reach no known vulnerability (`hack/pin-deps/ci.sh vulncheck`, govulncheck on the six Kubernetes binaries; the job summary lists each remaining one with the version to pin), then pass the Kubernetes unit tests (`make test`) and the e2e tests on kind (`hack/pin-deps/ci.sh e2e`: the specs of upstream's `pull-kubernetes-e2e-kind` presubmit plus the whole conformance suite), which run in parallel on `large-8_32` runners; the e2e specs also run in parallel, with the `[Serial]` ones one at a time. Vulnerabilities in the Go standard library fail the check too, on purpose: no pin can fix them, so a new Go CVE holds up pin changes for that minor version until Kubernetes releases a patch with a fixed Go. Run it manually for any version, with or without pins, with `gh workflow run test-go-dep-pins.yaml -f k8s-version=v1.36.6` (or `v1.36` for its latest patch release); add `-f vulncheck-only=true` to only scan it for vulnerabilities, e.g. to find what to pin.
 - Existing releases are not rebuilt automatically. After a pin change is merged, rebuild the patch releases the pull request tested, by running the `Kubernetes` and `Kubernetes FIPS` workflows with `kubernetes_version`:
@@ -111,7 +129,7 @@ How the pins apply, in short: **an entry applies to its `<since>` patch release 
   gh workflow run release_fips.yaml -f kubernetes_version=v1.36.7
   ```
 
-  A rebuild with `force` rebuilds every patch release as before, but only the ones a pin applies to are built from source; the others keep the dl.k8s.io binaries.
+  A rebuild with `force` rebuilds every patch release as before, but only the ones a pin applies to are built from source and e2e-tested; the others keep the dl.k8s.io binaries. It runs on a `large-8_32` runner (8 vCPUs, 32 GB RAM, 300 GB disk); the daily build and single-version rebuilds run on `ubuntu-latest`.
 
 ## Maintainer
 

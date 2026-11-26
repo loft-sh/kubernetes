@@ -8,6 +8,10 @@
 #                             in the current directory.
 #   ci.sh vulncheck <dir>     Fail when the binaries reach a known vulnerability.
 #   ci.sh e2e <dir>           Run the Kubernetes e2e tests on kind.
+#   ci.sh release-e2e <version>
+#                             Clone a patch release, apply its pins and run the
+#                             e2e tests on kind; the release workflow runs it
+#                             before publishing binaries built from source.
 #   ci.sh report              Sum up the job results for the required check.
 set -euo pipefail
 
@@ -193,6 +197,28 @@ cmd_e2e() {
   bash "${tools_dir}/e2e-k8s.sh"
 }
 
+# Clones the patch release into a temporary directory, applies its pins with
+# the Go version it builds with (GOTOOLCHAIN from .go-version) and runs the e2e
+# tests on kind. Env: as for e2e; ARTIFACTS defaults to
+# ./e2e-artifacts/<version>.
+cmd_release_e2e() {
+  local version="${1:?usage: $0 release-e2e <kubernetes version, e.g. v1.36.7>}"
+  local artifacts="${ARTIFACTS:-${PWD}/e2e-artifacts/${version}}" work rc=0
+  work=$(mktemp -d)
+  git -c advice.detachedHead=false clone -b "$version" --depth=1 https://github.com/kubernetes/kubernetes.git "${work}/kubernetes"
+  (
+    cd "${work}/kubernetes"
+    GOTOOLCHAIN="go$(cat .go-version)"
+    export GOTOOLCHAIN
+    cmd_apply "$version"
+    ARTIFACTS="$artifacts" cmd_e2e "${work}/kubernetes"
+  ) || rc=$?
+  # The Go build cache under _output is read-only.
+  chmod -R u+w "$work" 2>/dev/null || true
+  rm -rf "$work"
+  return "$rc"
+}
+
 # Fails when a job failed or was cancelled, with an error annotation naming it
 # and where to find the cause; skipped jobs pass (no pins to test, or
 # vulncheck-only). Env: DETECT, VULNCHECK, UNIT, E2E: the job results.
@@ -224,8 +250,9 @@ cmd="${1:-}"
 shift || true
 case "$cmd" in
   versions | apply | vulncheck | e2e | report) "cmd_${cmd}" "$@" ;;
+  release-e2e) cmd_release_e2e "$@" ;;
   *)
-    echo "usage: $0 versions | apply <version> | vulncheck <dir> | e2e <dir> | report" >&2
+    echo "usage: $0 versions | apply <version> | vulncheck <dir> | e2e <dir> | release-e2e <version> | report" >&2
     exit 2
     ;;
 esac

@@ -355,6 +355,9 @@ if [ -n "${K8S_GO_DEP_PINS:-}" ]; then
     for pin in ${K8S_GO_DEP_PINS}; do echo "- \`${pin}\`"; done
   } >> ./kubernetes-${KUBERNETES_VERSION}.txt
 fi
+# The pins this version was built from source with, empty when it uses the
+# dl.k8s.io binaries: the release tests source builds before publishing them.
+printf "%s" "${K8S_GO_DEP_PINS:-}" > ./kubernetes-${KUBERNETES_VERSION}.go-dep-pins
 
 # delete the release folder
 rm -rf ./release
