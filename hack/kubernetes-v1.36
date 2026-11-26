@@ -12,5 +12,5 @@ K8S_GO_DEP_PINS=(
   golang.org/x/net@v0.62.0  # CVE-2026-39821 (critical), CVE-2026-78661; raises x/crypto and x/text past CVE-2026-56854, CVE-2026-56851
   google.golang.org/grpc@v1.83.2  # CVE-2026-84304, CVE-2026-84445, GHSA-hrxh-6v49-42gf
   go.etcd.io/etcd/server/v3@v3.6.14  # CVE-2026-73500 in client/pkg; raises the whole etcd family to v3.6.14
-  go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc@v1.47.0  # CVE-2026-39883, CVE-2026-81870, CVE-2026-128085, CVE-2026-128086 in sdk, otlptrace, trace and otel; raises the whole otel core to v1.47.0
+  go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc@v1.44.0  # CVE-2026-39883 in sdk; raises the whole otel core to v1.44.0
 )
