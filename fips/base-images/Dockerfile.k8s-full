@@ -10,6 +10,7 @@ RUN apt-get update -y && \
   apt-get install -y --no-install-recommends \
   git \
   rsync \
+  jq \
   grep \
   coreutils \
   gcc;
@@ -18,6 +19,12 @@ RUN  mkdir -p "$GOPATH/src/github.com/kubernetes/kubernetes"; \
   git -c advice.detachedHead=false clone -b "$KUBERNETES_VERSION" --depth=1 https://github.com/kubernetes/kubernetes.git "$GOPATH/src/github.com/kubernetes/kubernetes"
 
 WORKDIR /go/src/github.com/kubernetes/kubernetes
+
+# Go dependency bumps for CVE fixes, from K8S_GO_DEP_PINS in hack/kubernetes-v1.X.
+# pin-go-deps.sh comes from the "hack" build context (--build-context hack=./hack).
+ARG K8S_GO_DEP_PINS=""
+COPY --from=hack pin-go-deps.sh /
+RUN /pin-go-deps.sh "${K8S_GO_DEP_PINS}"
 
 ARG BUILD_GO_TAGS="providerless"
 ARG BUILD_GO_FLAGS="-v"

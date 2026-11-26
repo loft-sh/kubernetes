@@ -76,6 +76,24 @@ A GitHub Actions workflow runs daily to:
 2. Check for missing versions in the container registry
 3. Automatically build and push images for any missing versions
 
+## Go Dependency Pins (CVE Fixes)
+
+When a scan reports a CVE in a Go dependency of the Kubernetes binaries that upstream has not fixed yet, pin the fixed version in the overlay for that minor version, `hack/kubernetes-v1.X`. The pins are a bash array, one `<module>@<version>` per line, with the CVE as a comment:
+
+```bash
+K8S_GO_DEP_PINS=(
+  golang.org/x/net@v0.47.0        # CVE-2025-22872
+  google.golang.org/grpc@v1.72.1  # CVE-2025-XXXX
+)
+```
+
+Most overlays end without a trailing newline, so start the pins on a new line rather than appending them to the last one.
+
+- With pins set, the regular build compiles kube-apiserver, kube-controller-manager, kube-scheduler, kubelet, kubeadm and kubectl from source (`hack/Dockerfile.k8s-src`) instead of downloading them from dl.k8s.io. The FIPS build always compiles from source and applies the same pins.
+- A pin is a minimum version: `hack/pin-go-deps.sh` skips it when upstream already ships the same or a newer version, so a pin never downgrades. Remove the pin once the build log says it was skipped.
+- Pins cover only the Kubernetes binaries. For containerd, runc, etcd, helm and the rest, bump their version in the overlay.
+- Existing releases are not rebuilt automatically. Run the `Kubernetes` and `Kubernetes FIPS` workflows with `force` set to `true`.
+
 ## Maintainer
 
 This project is maintained by [Loft Labs Inc](https://loft.sh)

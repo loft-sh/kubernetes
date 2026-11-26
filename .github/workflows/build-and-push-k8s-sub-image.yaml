@@ -66,10 +66,14 @@ jobs:
           cniVersion=$(./hack/parse-version.sh CNI_BINARIES_VERSION ./hack/kubernetes-${{ inputs.k8s-minor-version }})
           runcVersion=$(./hack/parse-version.sh RUNC_VERSION ./hack/kubernetes-${{ inputs.k8s-minor-version }})
           containerdVersion=$(./hack/parse-version.sh CONTAINERD_VERSION ./hack/kubernetes-${{ inputs.k8s-minor-version }})
+          # Optional bash array in the overlay; joined into one space-separated line.
+          # shellcheck disable=SC1090
+          goDepPins=$(. ./hack/kubernetes-${{ inputs.k8s-minor-version }}; echo "${K8S_GO_DEP_PINS[*]:-}")
 
           echo "cniPluginsVersion=${cniVersion}" >> "$GITHUB_OUTPUT"
           echo "runcVersion=${runcVersion}" >> "$GITHUB_OUTPUT"
           echo "containerdVersion=${containerdVersion}" >> "$GITHUB_OUTPUT"
+          echo "goDepPins=${goDepPins}" >> "$GITHUB_OUTPUT"
 
       - name: Check if image exists
         id: image-exists
@@ -91,6 +95,8 @@ jobs:
           push: true
           file: ./fips/base-images/Dockerfile.k8s-full
           context: ./fips/base-images
+          build-contexts: |
+            hack=./hack
           sbom: true
           provenance: true
           tags: ${{ steps.image-name.outputs.image }}
@@ -99,6 +105,7 @@ jobs:
             RUNC_VERSION=${{ steps.read-build-args.outputs.runcVersion }}
             CONTAINERD_VERSION=${{ steps.read-build-args.outputs.containerdVersion }}
             KUBERNETES_VERSION=${{ inputs.k8s-version }}
+            K8S_GO_DEP_PINS=${{ steps.read-build-args.outputs.goDepPins }}
 
       - name: Attest k8s image
         uses: actions/attest-build-provenance@v2
