@@ -146,10 +146,15 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          persist-credentials: false
+
       - name: Check the results
-        run: |
-          echo "detect=${{ needs.detect.result }} vulncheck=${{ needs.vulncheck.result }} unit=${{ needs.unit.result }} conformance=${{ needs.conformance.result }}"
-          [ "${{ needs.detect.result }}" = success ] || exit 1
-          for r in "${{ needs.vulncheck.result }}" "${{ needs.unit.result }}" "${{ needs.conformance.result }}"; do
-            [ "$r" = success ] || [ "$r" = skipped ] || exit 1
-          done
+        env:
+          DETECT: ${{ needs.detect.result }}
+          VULNCHECK: ${{ needs.vulncheck.result }}
+          UNIT: ${{ needs.unit.result }}
+          CONFORMANCE: ${{ needs.conformance.result }}
+        run: ./hack/report-pin-test-results.sh
