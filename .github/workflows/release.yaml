@@ -26,10 +26,42 @@ on:
         type: string
 
 jobs:
-  build-missing-k8s-versions:
-    # Rebuilding every tag (force) builds many versions, some from source and
-    # e2e-tested, in this one job: give it 8 vCPUs, 32 GB RAM and 300 GB disk.
-    runs-on: ${{ inputs.force == 'true' && 'large-8_32' || 'ubuntu-latest' }}
+  # The versions to build, one release job each, so a long build or test of one
+  # version cannot hold up or time out the others.
+  versions:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.versions.outputs.matrix }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Find the versions to build
+        id: versions
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          PAGE: ${{ inputs.page }}
+          PER_PAGE: ${{ inputs.per_page }}
+          FORCE: ${{ inputs.force }}
+          MIN_MINOR: ${{ inputs.kubernetes_minor_version }}
+          KUBERNETES_VERSION_INPUT: ${{ inputs.kubernetes_version }}
+        run: |
+          matrix=$(./hack/pin-deps/ci.sh release-versions)
+          echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
+          echo "### Kubernetes versions to build" >> "$GITHUB_STEP_SUMMARY"
+          echo "${matrix}" | jq -r '.include[] | "- \(.version) on \(.runner)"' >> "$GITHUB_STEP_SUMMARY"
+
+  # Downloads the binaries, or builds them from source with Go dependency pins
+  # and e2e-tests them (on large-8_32), then publishes the release and images.
+  release:
+    needs: versions
+    if: fromJson(needs.versions.outputs.matrix).include[0] != null
+    name: Release
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.versions.outputs.matrix) }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -44,197 +76,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Get stable K8s releases
-        id: get-releases
+      - name: Build, test and publish Kubernetes ${{ matrix.version }}
         env:
-          KUBERNETES_VERSION_INPUT: ${{ inputs.kubernetes_version }}
-        run: |
-          if [ -n "$KUBERNETES_VERSION_INPUT" ]; then
-            if ! [[ "$KUBERNETES_VERSION_INPUT" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-              echo "::error::kubernetes_version must look like v1.36.7, got: $KUBERNETES_VERSION_INPUT"
-              exit 1
-            fi
-            echo "Rebuilding only Kubernetes $KUBERNETES_VERSION_INPUT"
-            echo "stable_releases=$(jq -nc --arg v "$KUBERNETES_VERSION_INPUT" '[$v]')" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          PAGE=${{ inputs.page }}
-          if [ -z "$PAGE" ]; then
-            PAGE=1
-          fi
-
-          PER_PAGE=${{ inputs.per_page }}
-          if [ -z "$PER_PAGE" ]; then
-            PER_PAGE=50
-          fi
-
-          # Fetch all stable K8s releases (vX.Y.Z format, no alpha, beta, rc)
-          STABLE_RELEASES=$(curl -s "https://api.github.com/repos/kubernetes/kubernetes/releases?page=${PAGE}&per_page=${PER_PAGE}" | \
-            jq -r '.[] | select(.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$")) | .tag_name' | \
-            sort -V)
-          
-          echo "Found stable K8s releases:"
-          echo "$STABLE_RELEASES"
-          
-          # Convert the multi-line output to a JSON array for safe passing to next step
-          JSON_RELEASES=$(echo "$STABLE_RELEASES" | jq -R -s -c 'split("\n") | map(select(length > 0))')
-          echo "stable_releases=$JSON_RELEASES" >> $GITHUB_OUTPUT
-
-      - name: Check missing versions and download
-        env:
-          KUBERNETES_VERSION_INPUT: ${{ inputs.kubernetes_version }}
-        run: |
-          # loop through the stable releases and check if we have a release for it in the current github repository, if not
-          # invoke hack/download.sh --kubernetes-version $version -target-arch $arch (where arch is either amd64 or arm64) and 
-          # then create a new release with the two archives under hack/kubernetes-$version-$arch.tar.gz as assets.
-          # Parse the stable releases from previous step
-          STABLE_RELEASES='${{ steps.get-releases.outputs.stable_releases }}'
-          
-          # Parse the force flag from the inputs
-          FORCE=${{ inputs.force }}
-          if [ -z "$FORCE" ]; then
-            FORCE=false
-          fi
-          # A single requested version is rebuilt even when its release exists.
-          if [ -n "$KUBERNETES_VERSION_INPUT" ]; then
-            FORCE=true
-          fi
-
-          KUBERNETES_MINOR_VERSION=${{ inputs.kubernetes_minor_version }}
-          if [ -z "$KUBERNETES_MINOR_VERSION" ]; then
-            KUBERNETES_MINOR_VERSION="28"
-          fi
-          
-          # Setup GitHub CLI
-          gh auth login --with-token <<< "${{ secrets.GITHUB_TOKEN }}"
-          
-          cd hack
-          for VERSION in $(echo $STABLE_RELEASES | jq -r '.[]'); do
-            # Check if release already exists in this repo or if version is below 1.28
-            if [[ $(echo $VERSION | sed 's/v//') =~ ^([0-9]+)\.([0-9]+) ]] && [[ ${BASH_REMATCH[1]} -gt 1 || (${BASH_REMATCH[1]} -eq 1 && ${BASH_REMATCH[2]} -ge $KUBERNETES_MINOR_VERSION) ]]; then
-              # Check if there is a kubernetes-$VERSION file
-              KUBERNETES_VERSION_TRIMMED=$(echo ${VERSION} | sed -E 's/^(v[0-9]+\.[0-9]+)\.[0-9]+$/\1/')
-              if [ ! -f "./kubernetes-${KUBERNETES_VERSION_TRIMMED}" ]; then
-                echo "Versions file for Kubernetes $VERSION does not exist, skipping"
-                continue
-              fi
-
-              if gh release view $VERSION --repo ${{ github.repository }} &>/dev/null && [[ $FORCE == "false" ]]; then
-                echo "Release for Kubernetes $VERSION already exists, skipping"
-                continue
-              fi
-
-              echo "Building release for Kubernetes $VERSION..."
-              
-              # Download (or build from source, with Go dependency pins) for amd64 and arm64.
-              # A version that fails, e.g. a pin that does not fit an older patch release,
-              # is skipped and reported so the remaining versions still get released.
-              if ! ./download.sh --kubernetes-version $VERSION --target-arch amd64 \
-                || ! ./download.sh --kubernetes-version $VERSION --target-arch arm64; then
-                echo "::error::Failed to get the binaries of Kubernetes $VERSION, skipping it"
-                FAILED_VERSIONS="${FAILED_VERSIONS:-} $VERSION"
-                # the image build copies every kubernetes-*.tar.gz, so none may be left behind
-                rm -f ./kubernetes-$VERSION-*.tar.gz ./kubernetes-$VERSION.txt ./kubernetes-$VERSION.go-dep-pins
-                continue
-              fi
-
-              # Binaries built from source with Go dependency pins must pass the
-              # Kubernetes e2e tests before anything of this version is published;
-              # dl.k8s.io binaries are released as they are.
-              if [ -s "./kubernetes-$VERSION.go-dep-pins" ]; then
-                echo "Kubernetes $VERSION is built from source with Go dependency pins: $(cat "./kubernetes-$VERSION.go-dep-pins"), running the e2e tests..."
-                if ! ./pin-deps/ci.sh release-e2e "$VERSION"; then
-                  echo "::error::Kubernetes $VERSION, built from source with Go dependency pins, failed the e2e tests, skipping it"
-                  FAILED_VERSIONS="${FAILED_VERSIONS:-} $VERSION"
-                  rm -f ./kubernetes-$VERSION-*.tar.gz ./kubernetes-$VERSION.txt ./kubernetes-$VERSION.go-dep-pins
-                  continue
-                fi
-              fi
-              rm -f "./kubernetes-$VERSION.go-dep-pins"
-
-              # Create a new release with the archives as assets
-              if gh release view $VERSION --repo ${{ github.repository }} &>/dev/null; then
-                gh release upload "$VERSION" \
-                  "./kubernetes-$VERSION-amd64.tar.gz" \
-                  "./kubernetes-$VERSION-arm64.tar.gz" \
-                  "./kubernetes-$VERSION-amd64-full.tar.gz" \
-                  "./kubernetes-$VERSION-arm64-full.tar.gz" \
-                  --repo ${{ github.repository }} \
-                  --clobber
-
-                # Edit the release notes to include the component versions
-                gh release edit "$VERSION" \
-                  --notes-file "./kubernetes-$VERSION.txt" \
-                  --repo ${{ github.repository }}
-
-                echo "Updated release for Kubernetes $VERSION"
-              else
-                gh release create $VERSION \
-                  --title "Kubernetes $VERSION" \
-                  --notes-file "./kubernetes-$VERSION.txt" \
-                  --repo ${{ github.repository }} \
-                  "./kubernetes-$VERSION-amd64.tar.gz" \
-                  "./kubernetes-$VERSION-arm64.tar.gz" \
-                  "./kubernetes-$VERSION-amd64-full.tar.gz" \
-                  "./kubernetes-$VERSION-arm64-full.tar.gz"
-                
-                echo "Released Kubernetes $VERSION"
-              fi
-
-              # Remove the full archives
-              rm -f "./kubernetes-$VERSION-amd64-full.tar.gz"
-              rm -f "./kubernetes-$VERSION-arm64-full.tar.gz"
-
-              # Build the full image with node binaries
-              docker buildx build \
-                --platform linux/amd64,linux/arm64 \
-                -t ghcr.io/loft-sh/kubernetes:$VERSION-full \
-                --push .
-
-              # Remove the node archives
-              rm -f "./kubernetes-$VERSION-amd64.tar.gz"
-              rm -f "./kubernetes-$VERSION-arm64.tar.gz"
-
-              # Build the control plane image
-              docker buildx build \
-                --platform linux/amd64,linux/arm64 \
-                -t ghcr.io/loft-sh/kubernetes:$VERSION \
-                --push .
-
-              # Remove the downloaded files
-              rm -f "./kube-apiserver-amd64"
-              rm -f "./kube-apiserver-arm64"
-              rm -f "./kube-controller-manager-amd64"
-              rm -f "./kube-controller-manager-arm64"
-              rm -f "./kube-scheduler-amd64"
-              rm -f "./kube-scheduler-arm64"
-              rm -f "./helm-amd64"
-              rm -f "./helm-arm64"
-              rm -f "./etcd-amd64"
-              rm -f "./etcd-arm64"
-              rm -f "./etcdctl-amd64"
-              rm -f "./etcdctl-arm64"
-              rm -f "./etcdutl-amd64"
-              rm -f "./etcdutl-arm64"
-              rm -f "./kine-amd64"
-              rm -f "./kine-arm64"
-              rm -f "./konnectivity-server-amd64"
-              rm -f "./konnectivity-server-arm64"
-            else
-              echo "Release for Kubernetes $VERSION already exists, skipping"
-            fi
-          done
-
-          if [ -n "${FAILED_VERSIONS:-}" ]; then
-            echo "::error::Failed to release Kubernetes${FAILED_VERSIONS}"
-            exit 1
-          fi
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+          VERSION: ${{ matrix.version }}
+          # Outside hack/, the context of the image builds.
+          ARTIFACTS: ${{ runner.temp }}/e2e-artifacts
+        run: ./hack/release-version.sh "$VERSION"
 
       - name: Upload e2e test results
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
-          name: release-e2e
-          path: hack/e2e-artifacts
+          name: release-e2e-${{ matrix.version }}
+          path: ${{ runner.temp }}/e2e-artifacts
           if-no-files-found: ignore

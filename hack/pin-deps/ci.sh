@@ -12,6 +12,8 @@
 #                             Clone a patch release, apply its pins and run the
 #                             e2e tests on kind; the release workflow runs it
 #                             before publishing binaries built from source.
+#   ci.sh release-versions    Print the release workflow's matrix of versions
+#                             to build, each with its runner.
 #   ci.sh report              Sum up the job results for the required check.
 set -euo pipefail
 
@@ -39,7 +41,8 @@ released() {
 # Prints {"version":["v1.36.6","v1.36.7"]}: the Kubernetes patch releases to test.
 #   BASE_REF set (pull requests): for each minor version whose pin entries
 #     differ from BASE_REF, the "since" version of each new or changed entry
-#     and the latest patch release, which inherits every entry. When
+#     (which must be released) and the latest patch release, which inherits
+#     every entry. When
 #     pin-go-deps.sh or pins-for.sh differ, the latest patch release of every
 #     minor version with pins.
 #   ONLY_VERSION set (manual runs): that version, e.g. v1.36.6, or the latest
@@ -91,11 +94,12 @@ cmd_versions() {
     fi
     echo "$latest"
     for since in $(echo "$changed" | sed '/^$/d; s/:.*//' | sort -u); do
-      if echo "$releases" | grep -qx "$since"; then
-        echo "$since"
-      else
-        echo "Kubernetes ${since} is not released yet; its pins are tested on ${latest}" >&2
+      if ! echo "$releases" | grep -qx "$since"; then
+        # Its pins apply to no released version, so nothing could test them.
+        echo "Error: ${overlay} has pins from Kubernetes ${since}, which is not released yet; add them once it is" >&2
+        exit 1
       fi
+      echo "$since"
     done
   done | sort -uV | jq -Rsc '{version: (split("\n") | map(select(length > 0)))}'
 }
@@ -206,17 +210,75 @@ cmd_release_e2e() {
   local artifacts="${ARTIFACTS:-${PWD}/e2e-artifacts/${version}}" work rc=0
   work=$(mktemp -d)
   git -c advice.detachedHead=false clone -b "$version" --depth=1 https://github.com/kubernetes/kubernetes.git "${work}/kubernetes"
+  # Not "( ... ) || rc=$?": bash ignores set -e inside anything left of ||, so
+  # a failed pin step would go unnoticed and the e2e tests would pass on
+  # unpinned source. Each step must stop the subshell.
+  set +e
   (
+    set -e
     cd "${work}/kubernetes"
     GOTOOLCHAIN="go$(cat .go-version)"
     export GOTOOLCHAIN
     cmd_apply "$version"
     ARTIFACTS="$artifacts" cmd_e2e "${work}/kubernetes"
-  ) || rc=$?
+  )
+  rc=$?
+  set -e
   # The Go build cache under _output is read-only.
   chmod -R u+w "$work" 2>/dev/null || true
   rm -rf "$work"
   return "$rc"
+}
+
+# Prints {"include":[{"version":"v1.36.7","runner":"large-8_32"}, ...]}: the
+# Kubernetes patch releases .github/workflows/release.yaml builds, one job each.
+# A version with Go dependency pins is built from source and e2e-tested, so it
+# gets a large-8_32 runner; the others only download binaries, on ubuntu-latest.
+# Env: KUBERNETES_VERSION_INPUT (only that version, rebuilt even when its
+# release exists), else the stable releases on PAGE/PER_PAGE (default 1/50) of
+# kubernetes/kubernetes from minor version 1.MIN_MINOR (default 28) on, without
+# an existing release unless FORCE=true; REPO (owner/name) and GH_TOKEN to look
+# up existing releases.
+cmd_release_versions() {
+  cd "$repo_dir"
+  local force="${FORCE:-false}" versions version runner auth=()
+  if [ -n "${KUBERNETES_VERSION_INPUT:-}" ]; then
+    if ! [[ "$KUBERNETES_VERSION_INPUT" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+      echo "Error: kubernetes_version must look like v1.36.7, got: ${KUBERNETES_VERSION_INPUT}" >&2
+      exit 1
+    fi
+    versions="$KUBERNETES_VERSION_INPUT"
+    force=true
+  else
+    if [ -n "${GH_TOKEN:-}" ]; then
+      auth=(-H "Authorization: Bearer ${GH_TOKEN}")
+    fi
+    if ! versions=$(curl -fsS "${auth[@]}" "https://api.github.com/repos/kubernetes/kubernetes/releases?page=${PAGE:-1}&per_page=${PER_PAGE:-50}" \
+      | jq -r '.[] | select(.tag_name | test("^v[0-9]+\\.[0-9]+\\.[0-9]+$")) | .tag_name' | sort -V); then
+      echo "Error: failed to list the Kubernetes releases" >&2
+      exit 1
+    fi
+  fi
+
+  for version in $versions; do
+    [[ "$version" =~ ^v([0-9]+)\.([0-9]+)\. ]]
+    if [ "${BASH_REMATCH[1]}" -eq 1 ] && [ "${BASH_REMATCH[2]}" -lt "${MIN_MINOR:-28}" ]; then
+      continue
+    fi
+    if [ ! -f "hack/kubernetes-${version%.*}" ]; then
+      echo "No versions file for Kubernetes ${version}, skipping" >&2
+      continue
+    fi
+    if [ "$force" != true ] && gh release view "$version" --repo "${REPO:?REPO is required}" >/dev/null 2>&1; then
+      continue
+    fi
+    runner=ubuntu-latest
+    if [ -n "$("${deps_dir}/pins-for.sh" "$version")" ]; then
+      runner=large-8_32
+    fi
+    echo "Kubernetes ${version}: building on ${runner}" >&2
+    jq -nc --arg version "$version" --arg runner "$runner" '{version: $version, runner: $runner}'
+  done | jq -sc '{include: .}'
 }
 
 # Fails when a job failed or was cancelled, with an error annotation naming it
@@ -251,8 +313,9 @@ shift || true
 case "$cmd" in
   versions | apply | vulncheck | e2e | report) "cmd_${cmd}" "$@" ;;
   release-e2e) cmd_release_e2e "$@" ;;
+  release-versions) cmd_release_versions "$@" ;;
   *)
-    echo "usage: $0 versions | apply <version> | vulncheck <dir> | e2e <dir> | release-e2e <version> | report" >&2
+    echo "usage: $0 versions | apply <version> | vulncheck <dir> | e2e <dir> | release-e2e <version> | release-versions | report" >&2
     exit 2
     ;;
 esac

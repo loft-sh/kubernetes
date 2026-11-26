@@ -33,15 +33,16 @@ if ! listed=$(bash -ec 'source "$1"; [ -z "${K8S_GO_DEP_PINS+x}" ] || printf "%s
   echo "Error: failed to read ${overlay}" >&2
   exit 1
 fi
-mapfile -t entries <<< "$listed"
-[ -n "$listed" ] || entries=()
 
 # <since> <= <version>, both vX.Y.Z
 not_after() {
   [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -1)" = "$1" ]
 }
 
-for entry in "${entries[@]}"; do
+# A plain read loop rather than mapfile, which macOS's bash 3.2 lacks. The
+# result is printed only once every entry is valid, never a partial list.
+pins=$(printf '%s\n' "$listed" | while IFS= read -r entry; do
+  [ -n "$entry" ] || continue
   since="${entry%%:*}"
   pin="${entry#*:}"
   if [ "$since" = "$entry" ] || ! [[ "$since" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || [[ "$pin" != *@* ]]; then
@@ -55,4 +56,5 @@ for entry in "${entries[@]}"; do
   if not_after "$since" "$version"; then
     echo "${pin%@*} ${pin#*@}"
   fi
-done | sort -k1,1 -k2,2V | awk '{ v[$1] = $2 } END { for (m in v) print m "@" v[m] }' | sort | paste -sd' ' -
+done | sort -k1,1 -k2,2V | awk '{ v[$1] = $2 } END { for (m in v) print m "@" v[m] }' | sort | paste -sd' ' -)
+echo "$pins"

@@ -190,7 +190,8 @@ if [ -n "${K8S_GO_DEP_PINS}" ]; then
     exit 1
   fi
   # Also remove it when the script is interrupted or cancelled mid-build.
-  trap 'docker buildx rm "${K8S_SRC_BUILDER}" >/dev/null 2>&1; exit 130' INT TERM
+  trap 'docker buildx rm "${K8S_SRC_BUILDER}" >/dev/null 2>&1; exit 130' INT
+  trap 'docker buildx rm "${K8S_SRC_BUILDER}" >/dev/null 2>&1; exit 143' TERM
   docker buildx build --builder "${K8S_SRC_BUILDER}" -f ./pin-deps/Dockerfile \
     --platform "linux/${TARGETARCH}" \
     --build-arg KUBE_CROSS_VERSION="${KUBE_CROSS_VERSION}" \
