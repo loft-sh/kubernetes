@@ -77,18 +77,25 @@ cmd_versions() {
     if [ -n "${BASE_REF:-}" ] && git show "${BASE_REF}:${overlay}" > "$old_overlay" 2>/dev/null; then
       old_entries=$(entries_of "$old_overlay")
     fi
+    changed=""
+    if [ -n "${BASE_REF:-}" ]; then
+      # entries that are new or changed in this pull request, also when the
+      # pin tooling changes too: their <since> releases must be tested
+      changed=$(comm -23 <(echo "$new_entries" | sed '/^$/d' | sort -u) <(echo "$old_entries" | sed '/^$/d' | sort -u))
+    fi
     if [ -n "${BASE_REF:-}" ] && [ "$all_changed" = false ]; then
       [ "$new_entries" != "$old_entries" ] || continue
-      # entries that are new or changed in this pull request
-      changed=$(comm -23 <(echo "$new_entries" | sed '/^$/d' | sort -u) <(echo "$old_entries" | sed '/^$/d' | sort -u))
     else
       [ -n "$new_entries" ] || continue
-      changed=""
     fi
 
     releases=$(released "$minor")
     latest=$(echo "$releases" | tail -1)
     if [ -z "$latest" ]; then
+      if [ -n "$changed" ]; then
+        echo "Error: ${overlay} has new pins, but Kubernetes ${minor} has no release yet to test them on; add them once it has" >&2
+        exit 1
+      fi
       echo "Kubernetes ${minor} has no release yet, skipping" >&2
       continue
     fi
@@ -207,8 +214,12 @@ cmd_e2e() {
 # ./e2e-artifacts/<version>.
 cmd_release_e2e() {
   local version="${1:?usage: $0 release-e2e <kubernetes version, e.g. v1.36.7>}"
-  local artifacts="${ARTIFACTS:-${PWD}/e2e-artifacts/${version}}" work rc=0
-  work=$(mktemp -d)
+  local artifacts="${ARTIFACTS:-${PWD}/e2e-artifacts/${version}}" rc=0
+  release_e2e_work=$(mktemp -d)
+  # Also on an early exit, e.g. a failed clone; a cleanup failure only warns,
+  # so it cannot turn a passed e2e run into a failed one.
+  trap 'chmod -R u+w "$release_e2e_work" 2>/dev/null; rm -rf "$release_e2e_work" 2>/dev/null || echo "Warning: could not remove ${release_e2e_work}" >&2' EXIT
+  local work="$release_e2e_work"
   git -c advice.detachedHead=false clone -b "$version" --depth=1 https://github.com/kubernetes/kubernetes.git "${work}/kubernetes"
   # Not "( ... ) || rc=$?": bash ignores set -e inside anything left of ||, so
   # a failed pin step would go unnoticed and the e2e tests would pass on
@@ -224,9 +235,6 @@ cmd_release_e2e() {
   )
   rc=$?
   set -e
-  # The Go build cache under _output is read-only.
-  chmod -R u+w "$work" 2>/dev/null || true
-  rm -rf "$work"
   return "$rc"
 }
 
@@ -241,7 +249,11 @@ cmd_release_e2e() {
 # up existing releases.
 cmd_release_versions() {
   cd "$repo_dir"
-  local force="${FORCE:-false}" versions version runner view auth=()
+  local force="${FORCE:-false}" min_minor="${MIN_MINOR:-28}" versions version runner view pins auth=()
+  if ! [[ "$min_minor" =~ ^[0-9]+$ ]]; then
+    echo "Error: kubernetes_minor_version must be a number, e.g. 34, got: ${min_minor}" >&2
+    exit 1
+  fi
   if [ -n "${KUBERNETES_VERSION_INPUT:-}" ]; then
     if ! [[ "$KUBERNETES_VERSION_INPUT" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
       echo "Error: kubernetes_version must look like v1.36.7, got: ${KUBERNETES_VERSION_INPUT}" >&2
@@ -262,7 +274,7 @@ cmd_release_versions() {
 
   for version in $versions; do
     [[ "$version" =~ ^v([0-9]+)\.([0-9]+)\. ]]
-    if [ "${BASH_REMATCH[1]}" -eq 1 ] && [ "${BASH_REMATCH[2]}" -lt "${MIN_MINOR:-28}" ]; then
+    if [ "${BASH_REMATCH[1]}" -eq 1 ] && [ "${BASH_REMATCH[2]}" -lt "$min_minor" ]; then
       continue
     fi
     if [ ! -f "hack/kubernetes-${version%.*}" ]; then
@@ -280,8 +292,10 @@ cmd_release_versions() {
         exit 1
       fi
     fi
+    # On its own line, so a broken overlay stops here once.
+    pins=$("${deps_dir}/pins-for.sh" "$version")
     runner=ubuntu-latest
-    if [ -n "$("${deps_dir}/pins-for.sh" "$version")" ]; then
+    if [ -n "$pins" ]; then
       runner=large-8_32
     fi
     echo "Kubernetes ${version}: building on ${runner}" >&2

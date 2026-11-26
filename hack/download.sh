@@ -105,6 +105,9 @@ fi
  # load the versions from the file
 source ./kubernetes-${KUBERNETES_VERSION_TRIMMED}
 
+# Written once the build source is decided, below; none left from an earlier run.
+rm -f ./kubernetes-${KUBERNETES_VERSION}.go-dep-pins
+
 # containerd version
 if [ -z "$CONTAINERD_VERSION" ]; then
   echo "Error: containerd-version is required"
@@ -174,6 +177,9 @@ if [ -n "${K8S_GO_DEP_PINS}" ]; then
   # shellcheck disable=SC2086 # joins the one-per-line pins into one line
   K8S_GO_DEP_PINS=$(echo ${APPLIED_PINS})
 fi
+# The pins this version is built from source with, empty when it uses the
+# dl.k8s.io binaries: the release e2e-tests source builds before publishing them.
+printf "%s" "${K8S_GO_DEP_PINS}" > ./kubernetes-${KUBERNETES_VERSION}.go-dep-pins
 if [ -n "${K8S_GO_DEP_PINS}" ]; then
   echo "Building Kubernetes ${KUBERNETES_VERSION} from source with Go dependency pins: ${K8S_GO_DEP_PINS}..."
   rm -rf "${K8S_SRC_DIR}"
@@ -356,9 +362,6 @@ if [ -n "${K8S_GO_DEP_PINS:-}" ]; then
     for pin in ${K8S_GO_DEP_PINS}; do echo "- \`${pin}\`"; done
   } >> ./kubernetes-${KUBERNETES_VERSION}.txt
 fi
-# The pins this version was built from source with, empty when it uses the
-# dl.k8s.io binaries: the release tests source builds before publishing them.
-printf "%s" "${K8S_GO_DEP_PINS:-}" > ./kubernetes-${KUBERNETES_VERSION}.go-dep-pins
 
 # delete the release folder
 rm -rf ./release
