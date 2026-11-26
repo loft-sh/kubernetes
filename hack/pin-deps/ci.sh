@@ -241,7 +241,7 @@ cmd_release_e2e() {
 # up existing releases.
 cmd_release_versions() {
   cd "$repo_dir"
-  local force="${FORCE:-false}" versions version runner auth=()
+  local force="${FORCE:-false}" versions version runner view auth=()
   if [ -n "${KUBERNETES_VERSION_INPUT:-}" ]; then
     if ! [[ "$KUBERNETES_VERSION_INPUT" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
       echo "Error: kubernetes_version must look like v1.36.7, got: ${KUBERNETES_VERSION_INPUT}" >&2
@@ -269,8 +269,16 @@ cmd_release_versions() {
       echo "No versions file for Kubernetes ${version}, skipping" >&2
       continue
     fi
-    if [ "$force" != true ] && gh release view "$version" --repo "${REPO:?REPO is required}" >/dev/null 2>&1; then
-      continue
+    if [ "$force" != true ]; then
+      # Build only a version GitHub says has no release: any other failure to
+      # look it up (token, network, rate limit) must not rebuild existing ones.
+      if view=$(gh release view "$version" --repo "${REPO:?REPO is required}" 2>&1 >/dev/null); then
+        continue
+      fi
+      if [ "$view" != "release not found" ]; then
+        echo "Error: failed to check whether Kubernetes ${version} has a release: ${view}" >&2
+        exit 1
+      fi
     fi
     runner=ubuntu-latest
     if [ -n "$("${deps_dir}/pins-for.sh" "$version")" ]; then
