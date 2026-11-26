@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 # Default versions
 KUBERNETES_VERSION=""
 PAUSE_IMAGE_VERSION=""
@@ -12,6 +14,8 @@ KONNECTIVITY_VERSION=""
 # Default; per-k8s overlays (hack/kubernetes-v1.X) may set TAILSCALED_VERSION to override.
 TAILSCALED_VERSION="v1.78.1-loft.15"
 TARGETARCH="amd64"
+# Go dependency pins, set by the overlay as a bash array (see README.md).
+K8S_GO_DEP_PINS=()
 # When set, use this pre-built tailscaled binary instead of downloading from the fork's GitHub releases.
 VCLUSTER_TUNNEL_PATH=""
 
@@ -171,7 +175,7 @@ fi
 # k8s_bin <name> puts the Kubernetes binary <name> into ./<name>.
 k8s_bin() {
   if [ -n "${K8S_GO_DEP_PINS:-}" ]; then
-    cp "${K8S_SRC_DIR}/$1" "./$1"
+    cp "${K8S_SRC_DIR}/$1" "./$1" || { echo "Error: $1 is missing from the source build in ${K8S_SRC_DIR}"; return 1; }
   else
     curl -fsS -L -o "$1" "https://dl.k8s.io/release/${KUBERNETES_VERSION}/bin/linux/${TARGETARCH}/$1"
   fi
@@ -183,21 +187,21 @@ mkdir -p ./release
 # Download kubeadm, kubelet, and kubectl
 echo "Downloading kubeadm ${KUBERNETES_VERSION}..."
 if ! k8s_bin kubeadm; then
-  echo "Error: failed to download kubeadm ${KUBERNETES_VERSION} for ${TARGETARCH}"
+  echo "Error: failed to get kubeadm ${KUBERNETES_VERSION} for ${TARGETARCH}"
   exit 1
 fi
 chmod +x kubeadm
 mv kubeadm ./release/kubeadm
 echo "Downloading kubelet ${KUBERNETES_VERSION}..."
 if ! k8s_bin kubelet; then
-  echo "Error: failed to download kubelet ${KUBERNETES_VERSION} for ${TARGETARCH}"
+  echo "Error: failed to get kubelet ${KUBERNETES_VERSION} for ${TARGETARCH}"
   exit 1
 fi
 chmod +x kubelet
 mv kubelet ./release/kubelet
 echo "Downloading kubectl ${KUBERNETES_VERSION}..."
 if ! k8s_bin kubectl; then
-  echo "Error: failed to download kubectl ${KUBERNETES_VERSION} for ${TARGETARCH}"
+  echo "Error: failed to get kubectl ${KUBERNETES_VERSION} for ${TARGETARCH}"
   exit 1
 fi
 chmod +x kubectl
@@ -325,7 +329,7 @@ mkdir -p ./release
 # Download kube-apiserver
 echo "Downloading kube-apiserver ${KUBERNETES_VERSION}..."
 if ! k8s_bin kube-apiserver; then
-  echo "Error: failed to download kube-apiserver ${KUBERNETES_VERSION} for ${TARGETARCH}"
+  echo "Error: failed to get kube-apiserver ${KUBERNETES_VERSION} for ${TARGETARCH}"
   exit 1
 fi
 chmod +x kube-apiserver
@@ -333,7 +337,7 @@ cp kube-apiserver ./kube-apiserver-${TARGETARCH}
 mv kube-apiserver ./release/kube-apiserver
 echo "Downloading kube-controller-manager ${KUBERNETES_VERSION}..."
 if ! k8s_bin kube-controller-manager; then
-  echo "Error: failed to download kube-controller-manager ${KUBERNETES_VERSION} for ${TARGETARCH}"
+  echo "Error: failed to get kube-controller-manager ${KUBERNETES_VERSION} for ${TARGETARCH}"
   exit 1
 fi
 chmod +x kube-controller-manager
@@ -341,7 +345,7 @@ cp kube-controller-manager ./kube-controller-manager-${TARGETARCH}
 mv kube-controller-manager ./release/kube-controller-manager
 echo "Downloading kube-scheduler ${KUBERNETES_VERSION}..."
 if ! k8s_bin kube-scheduler; then
-  echo "Error: failed to download kube-scheduler ${KUBERNETES_VERSION} for ${TARGETARCH}"
+  echo "Error: failed to get kube-scheduler ${KUBERNETES_VERSION} for ${TARGETARCH}"
   exit 1
 fi
 chmod +x kube-scheduler

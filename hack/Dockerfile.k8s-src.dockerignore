@@ -1,0 +1,4 @@
+# Only the pin script goes into the source build context; hack/ also holds
+# the binaries and tarballs download.sh produces.
+*
+!pin-go-deps.sh

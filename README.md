@@ -90,7 +90,7 @@ K8S_GO_DEP_PINS=(
 Most overlays end without a trailing newline, so start the pins on a new line rather than appending them to the last one.
 
 - With pins set, the regular build compiles kube-apiserver, kube-controller-manager, kube-scheduler, kubelet, kubeadm and kubectl from source (`hack/Dockerfile.k8s-src`) instead of downloading them from dl.k8s.io. The FIPS build always compiles from source and applies the same pins.
-- A pin is a minimum version: `hack/pin-go-deps.sh` skips it when upstream already ships the same or a newer version, so a pin never downgrades. Remove the pin once the build log says it was skipped.
+- A pin is a minimum version: `hack/pin-go-deps.sh` skips it when upstream already ships the same or a newer version, so a pin never downgrades. Remove the pin once the build log says it was skipped. A pin must name a module the Kubernetes version depends on and a release version (`vX.Y.Z`, not a pre-release or pseudo-version); otherwise the build fails.
 - Pins cover only the Kubernetes binaries. For containerd, runc, etcd, helm and the rest, bump their version in the overlay.
 - Existing releases are not rebuilt automatically. Run the `Kubernetes` and `Kubernetes FIPS` workflows with `force` set to `true`.
 

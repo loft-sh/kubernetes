@@ -24,7 +24,7 @@ RUN set -ex; \
   SOURCE_DATE_EPOCH="$(git log -1 --pretty=%ct)"; \
   export SOURCE_DATE_EPOCH; \
   export KUBE_BUILD_PLATFORMS="linux/${TARGETARCH}"; \
-  export KUBE_GIT_VERSION="${KUBERNETES_VERSION}+loft" KUBE_GIT_TREE_STATE=clean; \
+  export KUBE_GIT_VERSION="${KUBERNETES_VERSION}" KUBE_GIT_TREE_STATE=clean; \
   make WHAT="cmd/kube-apiserver cmd/kube-controller-manager cmd/kube-scheduler cmd/kubelet cmd/kubeadm cmd/kubectl"; \
   mkdir /out; \
   mv _output/local/bin/linux/${TARGETARCH}/kube-apiserver \

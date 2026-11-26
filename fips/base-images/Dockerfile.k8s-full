@@ -1,3 +1,6 @@
+# Needs the hack/ directory as an extra build context for pin-go-deps.sh, e.g.
+#   docker buildx build -f fips/base-images/Dockerfile.k8s-full \
+#     --build-context hack=./hack fips/base-images
 ARG GO_VERSION=1.26.10
 FROM docker.io/library/golang:${GO_VERSION}-bookworm AS build
 
