@@ -7,11 +7,14 @@
 #   ci.sh apply <version>     Apply that patch release's pins to the checkout
 #                             in the current directory.
 #   ci.sh vulncheck <dir>     Fail when the binaries reach a known vulnerability.
+#   ci.sh unit <dir>          Run the Kubernetes unit tests (make test).
+#   ci.sh integration <dir>   Run the Kubernetes integration tests, against etcd.
 #   ci.sh e2e <dir>           Run the Kubernetes e2e tests on kind.
-#   ci.sh release-e2e <version>
+#   ci.sh release-tests <version>
 #                             Clone a patch release, apply its pins and run the
-#                             e2e tests on kind; the release workflow runs it
-#                             before publishing binaries built from source.
+#                             unit, integration and e2e tests; the release
+#                             workflow runs it before publishing binaries built
+#                             from source.
 #   ci.sh release-versions    Print the release workflow's matrix of versions
 #                             to build, each with its runner.
 #   ci.sh report              Sum up the job results for the required check.
@@ -177,6 +180,25 @@ cmd_vulncheck() {
   [ "$count" -eq 0 ]
 }
 
+# Runs the Kubernetes unit tests, as upstream's pull-kubernetes-unit does.
+# Env: WHAT to narrow them to packages (see make test).
+cmd_unit() {
+  local k8s_dir="${1:?usage: $0 unit <kubernetes source dir>}"
+  cd "$k8s_dir"
+  make test
+}
+
+# Runs the Kubernetes integration tests, as upstream's
+# pull-kubernetes-integration does: the API server and controllers in the test
+# process against a real etcd, which hack/install-etcd.sh puts into
+# third_party/etcd. Env: WHAT to narrow them to packages.
+cmd_integration() {
+  local k8s_dir="${1:?usage: $0 integration <kubernetes source dir>}"
+  cd "$k8s_dir"
+  ./hack/install-etcd.sh
+  PATH="${PWD}/third_party/etcd:${PATH}" make test-integration
+}
+
 # Runs the Kubernetes e2e tests on kind with kind's hack/ci/e2e-k8s.sh (the
 # script upstream's kind jobs run), building the node image from the source
 # tree, so its pins are what gets tested. By default it runs the specs of
@@ -209,21 +231,22 @@ cmd_e2e() {
 }
 
 # Clones the patch release into a temporary directory, applies its pins with
-# the Go version it builds with (GOTOOLCHAIN from .go-version) and runs the e2e
-# tests on kind. Env: as for e2e; ARTIFACTS defaults to
-# ./e2e-artifacts/<version>.
-cmd_release_e2e() {
-  local version="${1:?usage: $0 release-e2e <kubernetes version, e.g. v1.36.7>}"
+# the Go version it builds with (GOTOOLCHAIN from .go-version) and runs the
+# unit, integration and e2e tests on it, one after another; the first failure
+# stops them. Env: as for e2e; ARTIFACTS defaults to ./e2e-artifacts/<version>.
+cmd_release_tests() {
+  local version="${1:?usage: $0 release-tests <kubernetes version, e.g. v1.36.7>}"
   local artifacts="${ARTIFACTS:-${PWD}/e2e-artifacts/${version}}" rc=0
-  release_e2e_work=$(mktemp -d)
+  release_tests_work=$(mktemp -d)
   # Also on an early exit, e.g. a failed clone; a cleanup failure only warns,
-  # so it cannot turn a passed e2e run into a failed one.
-  trap 'chmod -R u+w "$release_e2e_work" 2>/dev/null; rm -rf "$release_e2e_work" 2>/dev/null || echo "Warning: could not remove ${release_e2e_work}" >&2' EXIT
-  local work="$release_e2e_work"
+  # so it cannot turn passed tests into failed ones.
+  trap 'chmod -R u+w "$release_tests_work" 2>/dev/null; rm -rf "$release_tests_work" 2>/dev/null || echo "Warning: could not remove ${release_tests_work}" >&2' EXIT
+  local work="$release_tests_work"
   git -c advice.detachedHead=false clone -b "$version" --depth=1 https://github.com/kubernetes/kubernetes.git "${work}/kubernetes"
   # Not "( ... ) || rc=$?": bash ignores set -e inside anything left of ||, so
-  # a failed pin step would go unnoticed and the e2e tests would pass on
-  # unpinned source. Each step must stop the subshell.
+  # a failed pin step would go unnoticed and the tests would pass on unpinned
+  # source. Each step must stop the subshell; each test suite runs in its own
+  # subshell since they change directory.
   set +e
   (
     set -e
@@ -231,7 +254,12 @@ cmd_release_e2e() {
     GOTOOLCHAIN="go$(cat .go-version)"
     export GOTOOLCHAIN
     cmd_apply "$version"
-    ARTIFACTS="$artifacts" cmd_e2e "${work}/kubernetes"
+    echo "Kubernetes ${version}: unit tests"
+    ( cmd_unit "${work}/kubernetes" )
+    echo "Kubernetes ${version}: integration tests"
+    ( cmd_integration "${work}/kubernetes" )
+    echo "Kubernetes ${version}: e2e tests"
+    ( ARTIFACTS="$artifacts" cmd_e2e "${work}/kubernetes" )
   )
   rc=$?
   set -e
@@ -240,8 +268,8 @@ cmd_release_e2e() {
 
 # Prints {"include":[{"version":"v1.36.7","runner":"large-8_32"}, ...]}: the
 # Kubernetes patch releases .github/workflows/release.yaml builds, one job each.
-# A version with Go dependency pins is built from source and e2e-tested, so it
-# gets a large-8_32 runner; the others only download binaries, on ubuntu-latest.
+# A version with Go dependency pins is built from source and tested (unit,
+# integration, e2e), so it gets a large-8_32 runner; the others only download binaries, on ubuntu-latest.
 # Env: KUBERNETES_VERSION_INPUT (only that version, rebuilt even when its
 # release exists), else the stable releases on PAGE/PER_PAGE (default 1/50) of
 # kubernetes/kubernetes from minor version 1.MIN_MINOR (default 28) on, without
@@ -305,7 +333,7 @@ cmd_release_versions() {
 
 # Fails when a job failed or was cancelled, with an error annotation naming it
 # and where to find the cause; skipped jobs pass (no pins to test, or
-# vulncheck-only). Env: DETECT, VULNCHECK, UNIT, E2E: the job results.
+# vulncheck-only). Env: DETECT, VULNCHECK, UNIT, INTEGRATION, E2E: the job results.
 cmd_report() {
   local failed=0
   report_job() { # <result> <job name> <where to look>
@@ -323,6 +351,7 @@ cmd_report() {
   fi
   report_job "${VULNCHECK:-}" "K8s vulnerability check" "see its annotations for the reachable vulnerabilities and the versions to pin"
   report_job "${UNIT:-}" "K8s unit tests" "see its log for the failing packages"
+  report_job "${INTEGRATION:-}" "K8s integration tests" "see its log for the failing packages"
   report_job "${E2E:-}" "K8s e2e tests" "see its log and the e2e-<version> artifact (junit_01.xml) for the failing specs"
   if [ "$failed" -eq 0 ]; then
     echo "All Go dependency pin checks passed (or had nothing to test)."
@@ -333,11 +362,11 @@ cmd_report() {
 cmd="${1:-}"
 shift || true
 case "$cmd" in
-  versions | apply | vulncheck | e2e | report) "cmd_${cmd}" "$@" ;;
-  release-e2e) cmd_release_e2e "$@" ;;
+  versions | apply | vulncheck | unit | integration | e2e | report) "cmd_${cmd}" "$@" ;;
+  release-tests) cmd_release_tests "$@" ;;
   release-versions) cmd_release_versions "$@" ;;
   *)
-    echo "usage: $0 versions | apply <version> | vulncheck <dir> | e2e <dir> | release-e2e <version> | release-versions | report" >&2
+    echo "usage: $0 versions | apply <version> | vulncheck <dir> | e2e <dir> | unit <dir> | integration <dir> | release-tests <version> | release-versions | report" >&2
     exit 2
     ;;
 esac

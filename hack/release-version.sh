@@ -3,8 +3,9 @@
 # .github/workflows/release.yaml:
 #   1. download.sh gets the amd64 and arm64 binaries: from dl.k8s.io, or built
 #      from source when a Go dependency pin raises a dependency.
-#   2. A source build must pass the e2e tests (pin-deps/ci.sh release-e2e)
-#      before anything of this version is published.
+#   2. A source build must pass the unit, integration and e2e tests
+#      (pin-deps/ci.sh release-tests) before anything of this version is
+#      published.
 #   3. The archives go to the GitHub release, the images to ghcr.io.
 # Any failure stops here, before publishing.
 #
@@ -32,9 +33,9 @@ for arch in amd64 arm64; do
 done
 
 if [ -s "./kubernetes-${version}.go-dep-pins" ]; then
-  echo "Kubernetes ${version} is built from source with Go dependency pins: $(cat "./kubernetes-${version}.go-dep-pins"), running the e2e tests..."
-  if ! ./pin-deps/ci.sh release-e2e "$version"; then
-    echo "::error::Kubernetes ${version}, built from source with Go dependency pins, failed the e2e tests; nothing of it is published"
+  echo "Kubernetes ${version} is built from source with Go dependency pins: $(cat "./kubernetes-${version}.go-dep-pins"), running the unit, integration and e2e tests..."
+  if ! ./pin-deps/ci.sh release-tests "$version"; then
+    echo "::error::Kubernetes ${version}, built from source with Go dependency pins, failed its tests; nothing of it is published"
     exit 1
   fi
 fi

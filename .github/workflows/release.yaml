@@ -25,7 +25,7 @@ on:
         description: A single Kubernetes version to rebuild, e.g. v1.36.7, even when its release exists (e.g. after its Go dependency pins change); the other inputs are then ignored
         type: string
       dry_run:
-        description: Go through the whole build, including the e2e tests and the images, but publish nothing
+        description: Go through the whole build, including the tests and the images, but publish nothing
         type: boolean
         default: false
 
@@ -59,7 +59,8 @@ jobs:
           echo "${matrix}" | jq -r '.include[] | "- \(.version) on \(.runner)"' >> "$GITHUB_STEP_SUMMARY"
 
   # Downloads the binaries, or builds them from source with Go dependency pins
-  # and e2e-tests them (on large-8_32), then publishes the release and images.
+  # and runs the unit, integration and e2e tests on them (on large-8_32), then
+  # publishes the release and images.
   release:
     needs: versions
     if: fromJson(needs.versions.outputs.matrix).include[0] != null
@@ -74,6 +75,14 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
+      # Go for the tests of a source build; GOTOOLCHAIN then switches to the
+      # Go version of the Kubernetes release from its .go-version.
+      - name: Set up Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff  # v5.6.0
+        with:
+          go-version: stable
+          cache: false
 
       # Not in a dry run, so an image push could not go through by mistake.
       - name: Login to GitHub Container Registry
@@ -95,7 +104,7 @@ jobs:
           ARTIFACTS: ${{ runner.temp }}/e2e-artifacts
         run: ./hack/release-version.sh "$VERSION"
 
-      - name: Upload e2e test results
+      - name: Upload test results
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
