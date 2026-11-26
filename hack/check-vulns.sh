@@ -8,14 +8,15 @@
 # The report lists each with the version that fixes it, which is the pin to
 # add; stdlib ones are fixed by a Kubernetes release with a newer Go.
 #
+# The report goes to stdout, to GITHUB_STEP_SUMMARY when set, and as one
+# GitHub error annotation per vulnerability under GITHUB_ACTIONS.
+#
 # Usage: check-vulns.sh <kubernetes source dir>
-# Env: GITHUB_STEP_SUMMARY (optional) for the report, GOVULNCHECK_VERSION
-#      (default v1.10.0).
+# Env: GOVULNCHECK_VERSION (default v1.10.0).
 set -euo pipefail
 
 k8s_dir="${1:?usage: $0 <kubernetes source dir>}"
 govulncheck_version="${GOVULNCHECK_VERSION:-v1.10.0}"
-report="${GITHUB_STEP_SUMMARY:-/dev/stdout}"
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
@@ -26,27 +27,40 @@ echo "Scanning the Kubernetes binaries in ${k8s_dir} with $(go version)..." >&2
   ./cmd/kube-apiserver ./cmd/kube-controller-manager ./cmd/kube-scheduler \
   ./cmd/kubelet ./cmd/kubeadm ./cmd/kubectl) > "${work}/scan.json"
 
-# One table row per reachable vulnerability and affected module.
+# One line per reachable vulnerability and affected module:
+# <id>\t<aliases>\t<module>\t<version>\t<fixed version>
 jq -rs '
   (map(select(.osv) | .osv | {key: .id, value: ((.aliases // []) | unique | join(", "))}) | from_entries) as $aliases
   | map(select(.finding and .finding.trace[0].function) | .finding
       | {id: .osv, module: .trace[0].module, version: .trace[0].version, fixed: (.fixed_version // "none")})
   | unique
   | .[]
-  | "| [\(.id)](https://pkg.go.dev/vuln/\(.id)) | \($aliases[.id] // "") | \(.module) | \(.version) | \(.fixed) |"' \
-  "${work}/scan.json" > "${work}/rows.md"
+  | [.id, (($aliases[.id] // "") | if . == "" then "-" else . end), .module, .version, .fixed] | @tsv' \
+  "${work}/scan.json" > "${work}/findings.tsv"
 
-count=$(cut -d'|' -f2 "${work}/rows.md" | sort -u | grep -c . || true)
+count=$(cut -f1 "${work}/findings.tsv" | sort -u | grep -c . || true)
 {
   if [ "$count" -gt 0 ]; then
     echo "**${count} reachable vulnerabilities.** Pin each module to its fixed version in the overlay; stdlib ones need a Kubernetes release with a newer Go."
     echo
     echo "| ID | Aliases | Module | Version | Fixed in |"
     echo "| --- | --- | --- | --- | --- |"
-    cat "${work}/rows.md"
+    while IFS=$'\t' read -r id aliases module version fixed; do
+      echo "| [${id}](https://pkg.go.dev/vuln/${id}) | ${aliases} | ${module} | ${version} | ${fixed} |"
+    done < "${work}/findings.tsv"
   else
     echo "No reachable vulnerabilities."
   fi
-} >> "$report"
+} > "${work}/report.md"
+
+cat "${work}/report.md"
+if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+  cat "${work}/report.md" >> "$GITHUB_STEP_SUMMARY"
+fi
+if [ -n "${GITHUB_ACTIONS:-}" ]; then
+  while IFS=$'\t' read -r id _ module version fixed; do
+    echo "::error title=${id} in ${module}::${module} ${version} reaches ${id} (https://pkg.go.dev/vuln/${id}); fixed in ${fixed}"
+  done < "${work}/findings.tsv"
+fi
 
 [ "$count" -eq 0 ]
