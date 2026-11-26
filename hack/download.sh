@@ -177,12 +177,23 @@ if [ -n "${K8S_GO_DEP_PINS}" ]; then
     echo "Error: failed to read the kube-cross version of Kubernetes ${KUBERNETES_VERSION}"
     exit 1
   fi
-  if ! docker buildx build -f ../kubernetes-deps/Dockerfile \
-      --platform "linux/${TARGETARCH}" \
-      --build-arg KUBE_CROSS_VERSION="${KUBE_CROSS_VERSION}" \
-      --build-arg KUBERNETES_VERSION="${KUBERNETES_VERSION}" \
-      --build-arg K8S_GO_DEP_PINS="${K8S_GO_DEP_PINS}" \
-      --output "type=local,dest=${K8S_SRC_DIR}" ../kubernetes-deps; then
+  # A throwaway builder: removing it drops its build cache (kube-cross, the
+  # clone, the Go build cache), so repeated source builds do not fill the disk,
+  # and the caller's own build cache is left alone.
+  K8S_SRC_BUILDER="k8s-src-${TARGETARCH}-$$"
+  if ! docker buildx create --name "${K8S_SRC_BUILDER}" --driver docker-container >/dev/null; then
+    echo "Error: failed to create the buildx builder ${K8S_SRC_BUILDER}"
+    exit 1
+  fi
+  docker buildx build --builder "${K8S_SRC_BUILDER}" -f ../kubernetes-deps/Dockerfile \
+    --platform "linux/${TARGETARCH}" \
+    --build-arg KUBE_CROSS_VERSION="${KUBE_CROSS_VERSION}" \
+    --build-arg KUBERNETES_VERSION="${KUBERNETES_VERSION}" \
+    --build-arg K8S_GO_DEP_PINS="${K8S_GO_DEP_PINS}" \
+    --output "type=local,dest=${K8S_SRC_DIR}" ../kubernetes-deps
+  K8S_SRC_BUILD_RC=$?
+  docker buildx rm "${K8S_SRC_BUILDER}" >/dev/null || echo "Warning: failed to remove the buildx builder ${K8S_SRC_BUILDER}"
+  if [ "${K8S_SRC_BUILD_RC}" -ne 0 ]; then
     echo "Error: failed to build Kubernetes ${KUBERNETES_VERSION} from source for ${TARGETARCH}"
     exit 1
   fi
@@ -197,7 +208,9 @@ k8s_bin() {
   fi
 }
 
-# Create the directory for the binaries
+# Create the directory for the binaries, without leftovers from a run that
+# failed partway, which would otherwise end up in this version's archives
+rm -rf ./release
 mkdir -p ./release
 
 # Download kubeadm, kubelet, and kubectl

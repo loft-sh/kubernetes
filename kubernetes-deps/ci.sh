@@ -27,7 +27,7 @@ pins_of() {
 #   ONLY_MINOR set (e.g. v1.35): only that minor version, with or without pins.
 cmd_versions() {
   cd "$repo_dir"
-  local all_changed=false old_overlay overlay minor pins version
+  local all_changed=false old_overlay overlay minor pins tags version
   if [ -n "${BASE_REF:-}" ] && ! git diff --quiet "${BASE_REF}" -- kubernetes-deps/pin-go-deps.sh; then
     all_changed=true
   fi
@@ -48,8 +48,13 @@ cmd_versions() {
       fi
     fi
 
-    version=$(git ls-remote --tags --refs https://github.com/kubernetes/kubernetes.git "${minor}.*" \
-      | sed 's#.*refs/tags/##' | grep -E "^${minor//./\\.}\.[0-9]+$" | sort -V | tail -1 || true)
+    # A failed lookup must fail the job: skipping the minor would let the
+    # required check pass without testing anything.
+    if ! tags=$(git ls-remote --tags --refs https://github.com/kubernetes/kubernetes.git "${minor}.*"); then
+      echo "Error: failed to list the Kubernetes ${minor} releases" >&2
+      exit 1
+    fi
+    version=$(echo "$tags" | sed 's#.*refs/tags/##' | grep -E "^${minor//./\\.}\.[0-9]+$" | sort -V | tail -1 || true)
     if [ -z "$version" ]; then
       echo "Kubernetes ${minor} has no release yet, skipping" >&2
       continue

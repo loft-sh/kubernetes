@@ -21,6 +21,9 @@ on:
       kubernetes_minor_version:
         description: The minimum minor version of Kubernetes to build
         type: string
+      kubernetes_version:
+        description: A single Kubernetes version to rebuild, e.g. v1.36.7, even when its release exists (e.g. after its Go dependency pins change); the other inputs are then ignored
+        type: string
 
 jobs:
   build-missing-k8s-versions:
@@ -41,7 +44,19 @@ jobs:
 
       - name: Get stable K8s releases
         id: get-releases
+        env:
+          KUBERNETES_VERSION_INPUT: ${{ inputs.kubernetes_version }}
         run: |
+          if [ -n "$KUBERNETES_VERSION_INPUT" ]; then
+            if ! [[ "$KUBERNETES_VERSION_INPUT" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::kubernetes_version must look like v1.36.7, got: $KUBERNETES_VERSION_INPUT"
+              exit 1
+            fi
+            echo "Rebuilding only Kubernetes $KUBERNETES_VERSION_INPUT"
+            echo "stable_releases=$(jq -nc --arg v "$KUBERNETES_VERSION_INPUT" '[$v]')" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
           PAGE=${{ inputs.page }}
           if [ -z "$PAGE" ]; then
             PAGE=1
@@ -65,6 +80,8 @@ jobs:
           echo "stable_releases=$JSON_RELEASES" >> $GITHUB_OUTPUT
 
       - name: Check missing versions and download
+        env:
+          KUBERNETES_VERSION_INPUT: ${{ inputs.kubernetes_version }}
         run: |
           # loop through the stable releases and check if we have a release for it in the current github repository, if not
           # invoke hack/download.sh --kubernetes-version $version -target-arch $arch (where arch is either amd64 or arm64) and 
@@ -76,6 +93,10 @@ jobs:
           FORCE=${{ inputs.force }}
           if [ -z "$FORCE" ]; then
             FORCE=false
+          fi
+          # A single requested version is rebuilt even when its release exists.
+          if [ -n "$KUBERNETES_VERSION_INPUT" ]; then
+            FORCE=true
           fi
 
           KUBERNETES_MINOR_VERSION=${{ inputs.kubernetes_minor_version }}
