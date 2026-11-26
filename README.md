@@ -102,17 +102,12 @@ How the pins apply, in short: **an entry applies to its `<since>` patch release 
 How the regular release builds a patch release:
 
 ```mermaid
-flowchart TD
-    start([Build patch release vX.Y.Z]) --> pins["pins-for.sh: entries of hack/kubernetes-vX.Y<br/>with since &le; vX.Y.Z"]
-    pins --> any{Any pin?}
-    any -- no --> copy[Download the dl.k8s.io binaries]
-    any -- yes --> raises{"Does a pin raise a dependency<br/>in the go.mod of vX.Y.Z?"}
-    raises -- "no, upstream already ships it" --> copy
-    raises -- yes --> source["Build from source in kube-cross<br/>with the pins that raise a dependency"]
-    source --> e2e{"e2e tests on kind<br/>(pull-kubernetes-e2e-kind specs + conformance)"}
-    e2e -- pass --> publish[Publish the release archives and images]
-    e2e -- fail --> skip["Skip vX.Y.Z, publish nothing for it,<br/>fail the run at the end"]
-    copy --> publish
+flowchart LR
+    pins["Pins of vX.Y.Z<br/>(entries with since ≤ vX.Y.Z)"] --> raise{"Does a pin raise<br/>a go.mod dependency?"}
+    raise -- no --> copy["Download the<br/>dl.k8s.io binaries"] --> publish["Publish"]
+    raise -- yes --> source["Build from source<br/>with the pins"] --> e2e{"e2e tests<br/>pass?"}
+    e2e -- yes --> publish
+    e2e -- no --> skip["Skip vX.Y.Z and<br/>fail the run"]
 ```
 
 The FIPS build always compiles from source and applies the same pins.
