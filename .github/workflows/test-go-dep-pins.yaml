@@ -57,7 +57,7 @@ jobs:
     needs: detect
     if: fromJson(needs.detect.outputs.matrix).include[0] != null
     name: K8s unit tests (${{ matrix.version }})
-    runs-on: ubuntu-latest
+    runs-on: large-8_32
     timeout-minutes: 240
     strategy:
       fail-fast: false
@@ -93,7 +93,7 @@ jobs:
     needs: detect
     if: fromJson(needs.detect.outputs.matrix).include[0] != null
     name: K8s conformance tests (${{ matrix.version }})
-    runs-on: ubuntu-latest
+    runs-on: large-8_32
     timeout-minutes: 300
     strategy:
       fail-fast: false

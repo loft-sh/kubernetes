@@ -1,0 +1,4 @@
+self-hosted-runner:
+  # loft-sh larger GitHub-hosted runners, see "Use large GitHub runners in CI" in Notion.
+  labels:
+    - large-8_32

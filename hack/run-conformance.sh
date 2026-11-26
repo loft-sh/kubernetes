@@ -5,9 +5,15 @@
 # that tree, so Go dependency pins applied to it are what gets tested.
 #
 # Usage: run-conformance.sh <kubernetes source dir>
+# Runs the specs in parallel ginkgo processes; ginkgo still runs the [Serial]
+# ones one at a time, so the whole suite is covered. GINKGO_PARALLEL=n runs
+# everything sequentially.
+#
 # Env: KIND_VERSION (default v0.33.0), ARTIFACTS (test results), PARALLEL=true
 #      to skip [Serial] tests, FOCUS/SKIP to narrow the suite (see e2e-k8s.sh).
 set -euo pipefail
+
+export GINKGO_PARALLEL="${GINKGO_PARALLEL:-y}"
 
 k8s_dir="${1:?usage: $0 <kubernetes source dir>}"
 kind_version="${KIND_VERSION:-v0.33.0}"
