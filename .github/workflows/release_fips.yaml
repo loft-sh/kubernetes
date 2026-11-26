@@ -24,6 +24,9 @@ on:
       kubernetes_minor_version:
         description: The minimum minor version of Kubernetes to build
         type: string
+      kubernetes_version:
+        description: A single Kubernetes version to rebuild, e.g. v1.36.7, even when its images exist (e.g. after its Go dependency pins change); the other inputs are then ignored
+        type: string
 
 jobs:
   generate-matrix:
@@ -46,8 +49,23 @@ jobs:
 
       - name: Get stable K8s releases
         id: get-releases
+        env:
+          KUBERNETES_VERSION_INPUT: ${{ inputs.kubernetes_version }}
         run: |
           set -euo pipefail
+          if [ -n "$KUBERNETES_VERSION_INPUT" ]; then
+            if ! [[ "$KUBERNETES_VERSION_INPUT" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "::error::kubernetes_version must look like v1.36.7, got: $KUBERNETES_VERSION_INPUT"
+              exit 1
+            fi
+            if [ ! -f "./hack/kubernetes-${KUBERNETES_VERSION_INPUT%.*}" ]; then
+              echo "::error::hack/kubernetes-${KUBERNETES_VERSION_INPUT%.*} does not exist"
+              exit 1
+            fi
+            echo "Rebuilding only Kubernetes $KUBERNETES_VERSION_INPUT"
+            echo "matrix=$(jq -nc --arg v "$KUBERNETES_VERSION_INPUT" '{version: [$v]}')" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           MIN_VERSION=${{ github.event.inputs.kubernetes_minor_version }}
           MIN_VERSION=${MIN_VERSION:-33}
           FORCE="${{ github.event.inputs.force }}"
@@ -91,7 +109,7 @@ jobs:
       fail-fast: false
     with:
       k8s-version: ${{ matrix.version }}
-      force: ${{ github.event.inputs.force == 'true' }}
+      force: ${{ github.event.inputs.force == 'true' || inputs.kubernetes_version != '' }}
     permissions:
       id-token: write
       packages: write

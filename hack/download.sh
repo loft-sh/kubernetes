@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 # Default versions
 KUBERNETES_VERSION=""
 PAUSE_IMAGE_VERSION=""
@@ -12,6 +14,8 @@ KONNECTIVITY_VERSION=""
 # Default; per-k8s overlays (hack/kubernetes-v1.X) may set TAILSCALED_VERSION to override.
 TAILSCALED_VERSION="v1.78.1-loft.15"
 TARGETARCH="amd64"
+# Go dependency pins, set by the overlay as a bash array (see README.md).
+K8S_GO_DEP_PINS=()
 # When set, use this pre-built tailscaled binary instead of downloading from the fork's GitHub releases.
 VCLUSTER_TUNNEL_PATH=""
 
@@ -143,27 +147,90 @@ if [ -z "$PAUSE_IMAGE_VERSION" ]; then
   exit 1
 fi
 
-# Create the directory for the binaries
+# When a Go dependency pin from the overlay (a CVE fix upstream has not
+# shipped yet) applies to this version, the Kubernetes binaries are built from
+# source with the pins instead of downloaded from dl.k8s.io.
+K8S_SRC_DIR="./k8s-src-${TARGETARCH}"
+# The overlay lists the pins as a bash array (one per line, with comments);
+# join them into one space-separated string.
+K8S_GO_DEP_PINS="${K8S_GO_DEP_PINS[*]:-}"
+if [ -n "${K8S_GO_DEP_PINS}" ]; then
+  # Keep only the pins that raise a dependency of this version, so a version
+  # that already ships them keeps the upstream binaries.
+  GO_MOD_DIR=$(mktemp -d)
+  if ! curl -fsSL -o "${GO_MOD_DIR}/go.mod" "https://raw.githubusercontent.com/kubernetes/kubernetes/${KUBERNETES_VERSION}/go.mod"; then
+    echo "Error: failed to read go.mod of Kubernetes ${KUBERNETES_VERSION}"
+    exit 1
+  fi
+  if ! APPLIED_PINS=$(cd "${GO_MOD_DIR}" && PIN_GO_DEPS_DRY_RUN=1 "${OLDPWD}/../kubernetes-deps/pin-go-deps.sh" "${K8S_GO_DEP_PINS}"); then
+    echo "Error: the Go dependency pins do not fit Kubernetes ${KUBERNETES_VERSION}"
+    exit 1
+  fi
+  rm -rf "${GO_MOD_DIR}"
+  # shellcheck disable=SC2086 # joins the one-per-line pins into one line
+  K8S_GO_DEP_PINS=$(echo ${APPLIED_PINS})
+fi
+if [ -n "${K8S_GO_DEP_PINS}" ]; then
+  echo "Building Kubernetes ${KUBERNETES_VERSION} from source with Go dependency pins: ${K8S_GO_DEP_PINS}..."
+  rm -rf "${K8S_SRC_DIR}"
+  if ! KUBE_CROSS_VERSION=$(curl -fsSL "https://raw.githubusercontent.com/kubernetes/kubernetes/${KUBERNETES_VERSION}/build/build-image/cross/VERSION"); then
+    echo "Error: failed to read the kube-cross version of Kubernetes ${KUBERNETES_VERSION}"
+    exit 1
+  fi
+  # A throwaway builder: removing it drops its build cache (kube-cross, the
+  # clone, the Go build cache), so repeated source builds do not fill the disk,
+  # and the caller's own build cache is left alone.
+  K8S_SRC_BUILDER="k8s-src-${TARGETARCH}-$$"
+  if ! docker buildx create --name "${K8S_SRC_BUILDER}" --driver docker-container >/dev/null; then
+    echo "Error: failed to create the buildx builder ${K8S_SRC_BUILDER}"
+    exit 1
+  fi
+  docker buildx build --builder "${K8S_SRC_BUILDER}" -f ../kubernetes-deps/Dockerfile \
+    --platform "linux/${TARGETARCH}" \
+    --build-arg KUBE_CROSS_VERSION="${KUBE_CROSS_VERSION}" \
+    --build-arg KUBERNETES_VERSION="${KUBERNETES_VERSION}" \
+    --build-arg K8S_GO_DEP_PINS="${K8S_GO_DEP_PINS}" \
+    --output "type=local,dest=${K8S_SRC_DIR}" ../kubernetes-deps
+  K8S_SRC_BUILD_RC=$?
+  docker buildx rm "${K8S_SRC_BUILDER}" >/dev/null || echo "Warning: failed to remove the buildx builder ${K8S_SRC_BUILDER}"
+  if [ "${K8S_SRC_BUILD_RC}" -ne 0 ]; then
+    echo "Error: failed to build Kubernetes ${KUBERNETES_VERSION} from source for ${TARGETARCH}"
+    exit 1
+  fi
+fi
+
+# k8s_bin <name> puts the Kubernetes binary <name> into ./<name>.
+k8s_bin() {
+  if [ -n "${K8S_GO_DEP_PINS:-}" ]; then
+    cp "${K8S_SRC_DIR}/$1" "./$1" || { echo "Error: $1 is missing from the source build in ${K8S_SRC_DIR}"; return 1; }
+  else
+    curl -fsS -L -o "$1" "https://dl.k8s.io/release/${KUBERNETES_VERSION}/bin/linux/${TARGETARCH}/$1"
+  fi
+}
+
+# Create the directory for the binaries, without leftovers from a run that
+# failed partway, which would otherwise end up in this version's archives
+rm -rf ./release
 mkdir -p ./release
 
 # Download kubeadm, kubelet, and kubectl
 echo "Downloading kubeadm ${KUBERNETES_VERSION}..."
-if ! curl -fsS -L -o kubeadm "https://dl.k8s.io/release/${KUBERNETES_VERSION}/bin/linux/${TARGETARCH}/kubeadm"; then
-  echo "Error: failed to download kubeadm ${KUBERNETES_VERSION} for ${TARGETARCH}"
+if ! k8s_bin kubeadm; then
+  echo "Error: failed to get kubeadm ${KUBERNETES_VERSION} for ${TARGETARCH}"
   exit 1
 fi
 chmod +x kubeadm
 mv kubeadm ./release/kubeadm
 echo "Downloading kubelet ${KUBERNETES_VERSION}..."
-if ! curl -fsS -L -o kubelet "https://dl.k8s.io/release/${KUBERNETES_VERSION}/bin/linux/${TARGETARCH}/kubelet"; then
-  echo "Error: failed to download kubelet ${KUBERNETES_VERSION} for ${TARGETARCH}"
+if ! k8s_bin kubelet; then
+  echo "Error: failed to get kubelet ${KUBERNETES_VERSION} for ${TARGETARCH}"
   exit 1
 fi
 chmod +x kubelet
 mv kubelet ./release/kubelet
 echo "Downloading kubectl ${KUBERNETES_VERSION}..."
-if ! curl -fsS -L -o kubectl "https://dl.k8s.io/release/${KUBERNETES_VERSION}/bin/linux/${TARGETARCH}/kubectl"; then
-  echo "Error: failed to download kubectl ${KUBERNETES_VERSION} for ${TARGETARCH}"
+if ! k8s_bin kubectl; then
+  echo "Error: failed to get kubectl ${KUBERNETES_VERSION} for ${TARGETARCH}"
   exit 1
 fi
 chmod +x kubectl
@@ -273,6 +340,14 @@ For more details on what's new, see the [Kubernetes release notes](https://githu
 | Crictl | [${CRICTL_VERSION}](https://github.com/kubernetes-sigs/cri-tools/releases/tag/${CRICTL_VERSION}) |
 | Pause Image | registry.k8s.io/pause:${PAUSE_IMAGE_VERSION} |
 EOF
+if [ -n "${K8S_GO_DEP_PINS:-}" ]; then
+  {
+    echo ""
+    echo "## Go Dependency Pins"
+    echo "The Kubernetes binaries are built from source with these minimum Go dependency versions:"
+    for pin in ${K8S_GO_DEP_PINS}; do echo "- \`${pin}\`"; done
+  } >> ./kubernetes-${KUBERNETES_VERSION}.txt
+fi
 
 # delete the release folder
 rm -rf ./release
@@ -282,24 +357,24 @@ mkdir -p ./release
 
 # Download kube-apiserver
 echo "Downloading kube-apiserver ${KUBERNETES_VERSION}..."
-if ! curl -fsS -L -o kube-apiserver "https://dl.k8s.io/release/${KUBERNETES_VERSION}/bin/linux/${TARGETARCH}/kube-apiserver"; then
-  echo "Error: failed to download kube-apiserver ${KUBERNETES_VERSION} for ${TARGETARCH}"
+if ! k8s_bin kube-apiserver; then
+  echo "Error: failed to get kube-apiserver ${KUBERNETES_VERSION} for ${TARGETARCH}"
   exit 1
 fi
 chmod +x kube-apiserver
 cp kube-apiserver ./kube-apiserver-${TARGETARCH}
 mv kube-apiserver ./release/kube-apiserver
 echo "Downloading kube-controller-manager ${KUBERNETES_VERSION}..."
-if ! curl -fsS -L -o kube-controller-manager "https://dl.k8s.io/release/${KUBERNETES_VERSION}/bin/linux/${TARGETARCH}/kube-controller-manager"; then
-  echo "Error: failed to download kube-controller-manager ${KUBERNETES_VERSION} for ${TARGETARCH}"
+if ! k8s_bin kube-controller-manager; then
+  echo "Error: failed to get kube-controller-manager ${KUBERNETES_VERSION} for ${TARGETARCH}"
   exit 1
 fi
 chmod +x kube-controller-manager
 cp kube-controller-manager ./kube-controller-manager-${TARGETARCH}
 mv kube-controller-manager ./release/kube-controller-manager
 echo "Downloading kube-scheduler ${KUBERNETES_VERSION}..."
-if ! curl -fsS -L -o kube-scheduler "https://dl.k8s.io/release/${KUBERNETES_VERSION}/bin/linux/${TARGETARCH}/kube-scheduler"; then
-  echo "Error: failed to download kube-scheduler ${KUBERNETES_VERSION} for ${TARGETARCH}"
+if ! k8s_bin kube-scheduler; then
+  echo "Error: failed to get kube-scheduler ${KUBERNETES_VERSION} for ${TARGETARCH}"
   exit 1
 fi
 chmod +x kube-scheduler
@@ -366,4 +441,4 @@ echo "Packing the control plane folder into kubernetes-${KUBERNETES_VERSION}-${T
 tar -zcf kubernetes-${KUBERNETES_VERSION}-${TARGETARCH}-full.tar.gz ./release
 
 # delete the release folder
-rm -rf ./release
+rm -rf ./release "${K8S_SRC_DIR}"
