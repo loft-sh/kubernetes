@@ -54,7 +54,7 @@ jobs:
           BASE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
           ONLY_MINOR: ${{ inputs.k8s-minor-version }}
         run: |
-          matrix=$(./hack/list-pins-to-test.sh)
+          matrix=$(./kubernetes-deps/ci.sh versions)
           echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
           echo "### Kubernetes versions to test" >> "$GITHUB_STEP_SUMMARY"
           echo "${matrix}" | jq -r '.version[] | "- \(.)"' >> "$GITHUB_STEP_SUMMARY"
@@ -81,7 +81,7 @@ jobs:
           dir: ${{ env.K8S_DIR }}
 
       - name: No reachable vulnerabilities
-        run: ./hack/check-vulns.sh "$K8S_DIR"
+        run: ./kubernetes-deps/ci.sh vulncheck "$K8S_DIR"
 
   unit:
     needs: [detect, vulncheck]
@@ -132,7 +132,7 @@ jobs:
       - name: Full conformance on kind
         env:
           ARTIFACTS: ${{ github.workspace }}/artifacts
-        run: ./hack/run-conformance.sh "$K8S_DIR"
+        run: ./kubernetes-deps/ci.sh conformance "$K8S_DIR"
 
       - name: Upload test results
         if: always()
@@ -159,4 +159,4 @@ jobs:
           VULNCHECK: ${{ needs.vulncheck.result }}
           UNIT: ${{ needs.unit.result }}
           CONFORMANCE: ${{ needs.conformance.result }}
-        run: ./hack/report-pin-test-results.sh
+        run: ./kubernetes-deps/ci.sh report

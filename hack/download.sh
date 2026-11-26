@@ -162,7 +162,7 @@ if [ -n "${K8S_GO_DEP_PINS}" ]; then
     echo "Error: failed to read go.mod of Kubernetes ${KUBERNETES_VERSION}"
     exit 1
   fi
-  if ! APPLIED_PINS=$(cd "${GO_MOD_DIR}" && PIN_GO_DEPS_DRY_RUN=1 "${OLDPWD}/pin-go-deps.sh" "${K8S_GO_DEP_PINS}"); then
+  if ! APPLIED_PINS=$(cd "${GO_MOD_DIR}" && PIN_GO_DEPS_DRY_RUN=1 "${OLDPWD}/../kubernetes-deps/pin-go-deps.sh" "${K8S_GO_DEP_PINS}"); then
     echo "Error: the Go dependency pins do not fit Kubernetes ${KUBERNETES_VERSION}"
     exit 1
   fi
@@ -177,12 +177,12 @@ if [ -n "${K8S_GO_DEP_PINS}" ]; then
     echo "Error: failed to read the kube-cross version of Kubernetes ${KUBERNETES_VERSION}"
     exit 1
   fi
-  if ! docker buildx build -f Dockerfile.k8s-src \
+  if ! docker buildx build -f ../kubernetes-deps/Dockerfile \
       --platform "linux/${TARGETARCH}" \
       --build-arg KUBE_CROSS_VERSION="${KUBE_CROSS_VERSION}" \
       --build-arg KUBERNETES_VERSION="${KUBERNETES_VERSION}" \
       --build-arg K8S_GO_DEP_PINS="${K8S_GO_DEP_PINS}" \
-      --output "type=local,dest=${K8S_SRC_DIR}" .; then
+      --output "type=local,dest=${K8S_SRC_DIR}" ../kubernetes-deps; then
     echo "Error: failed to build Kubernetes ${KUBERNETES_VERSION} from source for ${TARGETARCH}"
     exit 1
   fi

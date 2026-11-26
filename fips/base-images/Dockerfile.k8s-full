@@ -1,6 +1,7 @@
-# Needs the hack/ directory as an extra build context for pin-go-deps.sh, e.g.
+# Needs the kubernetes-deps/ directory as an extra build context for
+# pin-go-deps.sh, e.g.
 #   docker buildx build -f fips/base-images/Dockerfile.k8s-full \
-#     --build-context hack=./hack fips/base-images
+#     --build-context kubernetes-deps=./kubernetes-deps fips/base-images
 ARG GO_VERSION=1.26.10
 FROM docker.io/library/golang:${GO_VERSION}-bookworm AS build
 
@@ -24,9 +25,9 @@ RUN  mkdir -p "$GOPATH/src/github.com/kubernetes/kubernetes"; \
 WORKDIR /go/src/github.com/kubernetes/kubernetes
 
 # Go dependency bumps for CVE fixes, from K8S_GO_DEP_PINS in hack/kubernetes-v1.X.
-# pin-go-deps.sh comes from the "hack" build context (--build-context hack=./hack).
+# pin-go-deps.sh comes from the "kubernetes-deps" build context.
 ARG K8S_GO_DEP_PINS=""
-COPY --from=hack pin-go-deps.sh /
+COPY --from=kubernetes-deps pin-go-deps.sh /
 RUN /pin-go-deps.sh "${K8S_GO_DEP_PINS}"
 
 ARG BUILD_GO_TAGS="providerless"

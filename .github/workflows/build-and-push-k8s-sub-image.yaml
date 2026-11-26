@@ -96,7 +96,7 @@ jobs:
           file: ./fips/base-images/Dockerfile.k8s-full
           context: ./fips/base-images
           build-contexts: |
-            hack=./hack
+            kubernetes-deps=./kubernetes-deps
           sbom: true
           provenance: true
           tags: ${{ steps.image-name.outputs.image }}
