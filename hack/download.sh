@@ -168,7 +168,6 @@ if [ -n "${K8S_GO_DEP_PINS}" ]; then
   fi
   rm -rf "${GO_MOD_DIR}"
   # shellcheck disable=SC2086 # joins the one-per-line pins into one line
-  # shellcheck disable=SC2086 # joins the one-per-line pins into one line
   K8S_GO_DEP_PINS=$(echo ${APPLIED_PINS})
 fi
 if [ -n "${K8S_GO_DEP_PINS}" ]; then
