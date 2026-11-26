@@ -2,9 +2,10 @@ name: Test Go dependency pins
 
 # Gates a change to K8S_GO_DEP_PINS before it is merged and published: for
 # each minor version whose pins change, the latest patch release is built from
-# source with the pins and must pass the Kubernetes unit tests first, then the
-# full conformance suite on kind (the same e2e-k8s.sh upstream's
-# ci-kubernetes-kind-conformance job runs). Nothing is published.
+# source with the pins and must pass the Kubernetes unit tests and the full
+# conformance suite on kind (the same e2e-k8s.sh upstream's
+# ci-kubernetes-kind-conformance job runs), in parallel jobs. Nothing is
+# published.
 #
 # Make the "Go dependency pins tested" check required on main. It runs on every
 # pull request and passes right away when no pins change, so the requirement
@@ -89,7 +90,8 @@ jobs:
         run: make test
 
   conformance:
-    needs: [detect, unit]
+    needs: detect
+    if: fromJson(needs.detect.outputs.matrix).include[0] != null
     name: conformance (${{ matrix.version }})
     runs-on: ubuntu-latest
     timeout-minutes: 300
