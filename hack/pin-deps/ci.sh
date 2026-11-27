@@ -10,13 +10,9 @@
 #   ci.sh unit <dir>          Run the Kubernetes unit tests (make test).
 #   ci.sh integration <dir>   Run the Kubernetes integration tests, against etcd.
 #   ci.sh e2e <dir>           Run the Kubernetes e2e tests on kind.
-#   ci.sh release-tests <version>
-#                             Clone a patch release, apply its pins and run the
-#                             unit, integration and e2e tests; the release
-#                             workflow runs it before publishing binaries built
-#                             from source.
 #   ci.sh release-versions    Print the release workflow's matrix of versions
-#                             to build, each with its runner.
+#                             to build, each saying whether it is built from
+#                             source (and tested) or from dl.k8s.io.
 #   ci.sh report              Sum up the job results for the required check.
 set -euo pipefail
 
@@ -230,46 +226,12 @@ cmd_e2e() {
   bash "${tools_dir}/e2e-k8s.sh"
 }
 
-# Clones the patch release into a temporary directory, applies its pins with
-# the Go version it builds with (GOTOOLCHAIN from .go-version) and runs the
-# unit, integration and e2e tests on it, one after another; the first failure
-# stops them. Env: as for e2e; ARTIFACTS defaults to ./e2e-artifacts/<version>.
-cmd_release_tests() {
-  local version="${1:?usage: $0 release-tests <kubernetes version, e.g. v1.36.7>}"
-  local artifacts="${ARTIFACTS:-${PWD}/e2e-artifacts/${version}}" rc=0
-  release_tests_work=$(mktemp -d)
-  # Also on an early exit, e.g. a failed clone; a cleanup failure only warns,
-  # so it cannot turn passed tests into failed ones.
-  trap 'chmod -R u+w "$release_tests_work" 2>/dev/null; rm -rf "$release_tests_work" 2>/dev/null || echo "Warning: could not remove ${release_tests_work}" >&2' EXIT
-  local work="$release_tests_work"
-  git -c advice.detachedHead=false clone -b "$version" --depth=1 https://github.com/kubernetes/kubernetes.git "${work}/kubernetes"
-  # Not "( ... ) || rc=$?": bash ignores set -e inside anything left of ||, so
-  # a failed pin step would go unnoticed and the tests would pass on unpinned
-  # source. Each step must stop the subshell; each test suite runs in its own
-  # subshell since they change directory.
-  set +e
-  (
-    set -e
-    cd "${work}/kubernetes"
-    GOTOOLCHAIN="go$(cat .go-version)"
-    export GOTOOLCHAIN
-    cmd_apply "$version"
-    echo "Kubernetes ${version}: unit tests"
-    ( cmd_unit "${work}/kubernetes" )
-    echo "Kubernetes ${version}: integration tests"
-    ( cmd_integration "${work}/kubernetes" )
-    echo "Kubernetes ${version}: e2e tests"
-    ( ARTIFACTS="$artifacts" cmd_e2e "${work}/kubernetes" )
-  )
-  rc=$?
-  set -e
-  return "$rc"
-}
-
-# Prints {"include":[{"version":"v1.36.7","runner":"large-8_32"}, ...]}: the
-# Kubernetes patch releases .github/workflows/release.yaml builds, one job each.
-# A version with Go dependency pins is built from source and tested (unit,
-# integration, e2e), so it gets a large-8_32 runner; the others only download binaries, on ubuntu-latest.
+# Prints {"include":[{"version":"v1.36.7","source":true}, ...]}: the Kubernetes
+# patch releases .github/workflows/release.yaml builds, each in its own run of
+# release-version.yaml. source is true when a Go dependency pin raises one of
+# its dependencies (effective-pins.sh, as download.sh decides): it is built from
+# source and tested before it is published; otherwise it keeps the dl.k8s.io
+# binaries and is not tested.
 # Env: KUBERNETES_VERSION_INPUT (only that version, rebuilt even when its
 # release exists), else the stable releases on PAGE/PER_PAGE (default 1/50) of
 # kubernetes/kubernetes from minor version 1.MIN_MINOR (default 28) on, without
@@ -277,7 +239,7 @@ cmd_release_tests() {
 # up existing releases.
 cmd_release_versions() {
   cd "$repo_dir"
-  local force="${FORCE:-false}" min_minor="${MIN_MINOR:-28}" versions version runner view pins auth=()
+  local force="${FORCE:-false}" min_minor="${MIN_MINOR:-28}" versions version source view pins auth=()
   if ! [[ "$min_minor" =~ ^[0-9]+$ ]]; then
     echo "Error: kubernetes_minor_version must be a number, e.g. 34, got: ${min_minor}" >&2
     exit 1
@@ -320,14 +282,16 @@ cmd_release_versions() {
         exit 1
       fi
     fi
-    # On its own line, so a broken overlay stops here once.
-    pins=$("${deps_dir}/pins-for.sh" "$version")
-    runner=ubuntu-latest
+    # On its own line, so a broken overlay or an unreadable go.mod stops here.
+    pins=$("${deps_dir}/effective-pins.sh" "$version")
+    source=false
     if [ -n "$pins" ]; then
-      runner=large-8_32
+      source=true
+      echo "Kubernetes ${version}: from source with ${pins}, tested" >&2
+    else
+      echo "Kubernetes ${version}: dl.k8s.io binaries" >&2
     fi
-    echo "Kubernetes ${version}: building on ${runner}" >&2
-    jq -nc --arg version "$version" --arg runner "$runner" '{version: $version, runner: $runner}'
+    jq -nc --arg version "$version" --argjson source "$source" '{version: $version, source: $source}'
   done | jq -sc '{include: .}'
 }
 
@@ -363,10 +327,9 @@ cmd="${1:-}"
 shift || true
 case "$cmd" in
   versions | apply | vulncheck | unit | integration | e2e | report) "cmd_${cmd}" "$@" ;;
-  release-tests) cmd_release_tests "$@" ;;
   release-versions) cmd_release_versions "$@" ;;
   *)
-    echo "usage: $0 versions | apply <version> | vulncheck <dir> | e2e <dir> | unit <dir> | integration <dir> | release-tests <version> | release-versions | report" >&2
+    echo "usage: $0 versions | apply <version> | vulncheck <dir> | e2e <dir> | unit <dir> | integration <dir> | release-versions | report" >&2
     exit 2
     ;;
 esac

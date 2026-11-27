@@ -109,9 +109,6 @@ fi
  # load the versions from the file
 source ./kubernetes-${KUBERNETES_VERSION_TRIMMED}
 
-# Written once the build source is decided, below; none left from an earlier run.
-rm -f ./kubernetes-${KUBERNETES_VERSION}.go-dep-pins
-
 # containerd version
 if [ -z "$CONTAINERD_VERSION" ]; then
   echo "Error: containerd-version is required"
@@ -158,32 +155,14 @@ fi
 # shipped yet) applies to this version, the Kubernetes binaries are built from
 # source with the pins instead of downloaded from dl.k8s.io.
 K8S_SRC_DIR="./k8s-src-${TARGETARCH}"
-# The pins of this patch release: the overlay's entries from this version or
-# earlier ones of its minor version (see pin-deps/pins-for.sh).
+# The pins that raise a dependency of this version (pin-deps/effective-pins.sh),
+# empty when it already ships them or none apply: then it keeps the dl.k8s.io
+# binaries.
 unset K8S_GO_DEP_PINS # the sourced overlay set it as an array of all entries
-if ! K8S_GO_DEP_PINS=$(./pin-deps/pins-for.sh "${KUBERNETES_VERSION}"); then
-  echo "Error: failed to read the Go dependency pins of Kubernetes ${KUBERNETES_VERSION}"
+if ! K8S_GO_DEP_PINS=$(./pin-deps/effective-pins.sh "${KUBERNETES_VERSION}"); then
+  echo "Error: failed to get the Go dependency pins of Kubernetes ${KUBERNETES_VERSION}"
   exit 1
 fi
-if [ -n "${K8S_GO_DEP_PINS}" ]; then
-  # Keep only the pins that raise a dependency of this version, so a version
-  # that already ships them keeps the upstream binaries.
-  GO_MOD_DIR=$(mktemp -d)
-  if ! curl -fsSL -o "${GO_MOD_DIR}/go.mod" "https://raw.githubusercontent.com/kubernetes/kubernetes/${KUBERNETES_VERSION}/go.mod"; then
-    echo "Error: failed to read go.mod of Kubernetes ${KUBERNETES_VERSION}"
-    exit 1
-  fi
-  if ! APPLIED_PINS=$(cd "${GO_MOD_DIR}" && PIN_GO_DEPS_DRY_RUN=1 "${OLDPWD}/pin-deps/pin-go-deps.sh" "${K8S_GO_DEP_PINS}"); then
-    echo "Error: the Go dependency pins do not fit Kubernetes ${KUBERNETES_VERSION}"
-    exit 1
-  fi
-  rm -rf "${GO_MOD_DIR}"
-  # shellcheck disable=SC2086 # joins the one-per-line pins into one line
-  K8S_GO_DEP_PINS=$(echo ${APPLIED_PINS})
-fi
-# The pins this version is built from source with, empty when it uses the
-# dl.k8s.io binaries: the release e2e-tests source builds before publishing them.
-printf "%s" "${K8S_GO_DEP_PINS}" > ./kubernetes-${KUBERNETES_VERSION}.go-dep-pins
 if [ -n "${K8S_GO_DEP_PINS}" ]; then
   echo "Building Kubernetes ${KUBERNETES_VERSION} from source with Go dependency pins: ${K8S_GO_DEP_PINS}..."
   rm -rf "${K8S_SRC_DIR}"
