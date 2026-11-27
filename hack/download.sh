@@ -14,8 +14,8 @@ KONNECTIVITY_VERSION=""
 # Default; per-k8s overlays (hack/kubernetes-v1.X) may set TAILSCALED_VERSION to override.
 TAILSCALED_VERSION="v1.78.1-loft.15"
 TARGETARCH="amd64"
-# Go dependency pins, set by the overlay as a bash array (see README.md).
-K8S_GO_DEP_PINS=()
+# Go dependency pins of this version, from the overlay (see pin-deps/pins-for.sh).
+K8S_GO_DEP_PINS=""
 # When set, use this pre-built tailscaled binary instead of downloading from the fork's GitHub releases.
 VCLUSTER_TUNNEL_PATH=""
 
@@ -109,6 +109,9 @@ fi
  # load the versions from the file
 source ./kubernetes-${KUBERNETES_VERSION_TRIMMED}
 
+# Written once the build source is decided, below; none left from an earlier run.
+rm -f ./kubernetes-${KUBERNETES_VERSION}.go-dep-pins
+
 # containerd version
 if [ -z "$CONTAINERD_VERSION" ]; then
   echo "Error: containerd-version is required"
@@ -155,9 +158,13 @@ fi
 # shipped yet) applies to this version, the Kubernetes binaries are built from
 # source with the pins instead of downloaded from dl.k8s.io.
 K8S_SRC_DIR="./k8s-src-${TARGETARCH}"
-# The overlay lists the pins as a bash array (one per line, with comments);
-# join them into one space-separated string.
-K8S_GO_DEP_PINS="${K8S_GO_DEP_PINS[*]:-}"
+# The pins of this patch release: the overlay's entries from this version or
+# earlier ones of its minor version (see pin-deps/pins-for.sh).
+unset K8S_GO_DEP_PINS # the sourced overlay set it as an array of all entries
+if ! K8S_GO_DEP_PINS=$(./pin-deps/pins-for.sh "${KUBERNETES_VERSION}"); then
+  echo "Error: failed to read the Go dependency pins of Kubernetes ${KUBERNETES_VERSION}"
+  exit 1
+fi
 if [ -n "${K8S_GO_DEP_PINS}" ]; then
   # Keep only the pins that raise a dependency of this version, so a version
   # that already ships them keeps the upstream binaries.
@@ -166,7 +173,7 @@ if [ -n "${K8S_GO_DEP_PINS}" ]; then
     echo "Error: failed to read go.mod of Kubernetes ${KUBERNETES_VERSION}"
     exit 1
   fi
-  if ! APPLIED_PINS=$(cd "${GO_MOD_DIR}" && PIN_GO_DEPS_DRY_RUN=1 "${OLDPWD}/../kubernetes-deps/pin-go-deps.sh" "${K8S_GO_DEP_PINS}"); then
+  if ! APPLIED_PINS=$(cd "${GO_MOD_DIR}" && PIN_GO_DEPS_DRY_RUN=1 "${OLDPWD}/pin-deps/pin-go-deps.sh" "${K8S_GO_DEP_PINS}"); then
     echo "Error: the Go dependency pins do not fit Kubernetes ${KUBERNETES_VERSION}"
     exit 1
   fi
@@ -174,6 +181,9 @@ if [ -n "${K8S_GO_DEP_PINS}" ]; then
   # shellcheck disable=SC2086 # joins the one-per-line pins into one line
   K8S_GO_DEP_PINS=$(echo ${APPLIED_PINS})
 fi
+# The pins this version is built from source with, empty when it uses the
+# dl.k8s.io binaries: the release e2e-tests source builds before publishing them.
+printf "%s" "${K8S_GO_DEP_PINS}" > ./kubernetes-${KUBERNETES_VERSION}.go-dep-pins
 if [ -n "${K8S_GO_DEP_PINS}" ]; then
   echo "Building Kubernetes ${KUBERNETES_VERSION} from source with Go dependency pins: ${K8S_GO_DEP_PINS}..."
   rm -rf "${K8S_SRC_DIR}"
@@ -189,13 +199,17 @@ if [ -n "${K8S_GO_DEP_PINS}" ]; then
     echo "Error: failed to create the buildx builder ${K8S_SRC_BUILDER}"
     exit 1
   fi
-  docker buildx build --builder "${K8S_SRC_BUILDER}" -f ../kubernetes-deps/Dockerfile \
+  # Also remove it when the script is interrupted or cancelled mid-build.
+  trap 'docker buildx rm "${K8S_SRC_BUILDER}" >/dev/null 2>&1; exit 130' INT
+  trap 'docker buildx rm "${K8S_SRC_BUILDER}" >/dev/null 2>&1; exit 143' TERM
+  docker buildx build --builder "${K8S_SRC_BUILDER}" -f ./pin-deps/Dockerfile \
     --platform "linux/${TARGETARCH}" \
     --build-arg KUBE_CROSS_VERSION="${KUBE_CROSS_VERSION}" \
     --build-arg KUBERNETES_VERSION="${KUBERNETES_VERSION}" \
     --build-arg K8S_GO_DEP_PINS="${K8S_GO_DEP_PINS}" \
-    --output "type=local,dest=${K8S_SRC_DIR}" ../kubernetes-deps
+    --output "type=local,dest=${K8S_SRC_DIR}" ./pin-deps
   K8S_SRC_BUILD_RC=$?
+  trap - INT TERM
   docker buildx rm "${K8S_SRC_BUILDER}" >/dev/null || echo "Warning: failed to remove the buildx builder ${K8S_SRC_BUILDER}"
   if [ "${K8S_SRC_BUILD_RC}" -ne 0 ]; then
     echo "Error: failed to build Kubernetes ${KUBERNETES_VERSION} from source for ${TARGETARCH}"

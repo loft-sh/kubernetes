@@ -1,11 +1,12 @@
 name: Test Go dependency pins
 
-# Gates a change to K8S_GO_DEP_PINS before it is merged and published: for
-# each minor version whose pins change, the latest patch release, with the pins
-# applied and the Go version it builds with, must first reach no known
-# vulnerability (govulncheck), then pass the Kubernetes unit tests and the full
-# conformance suite on kind (the same e2e-k8s.sh upstream's
-# ci-kubernetes-kind-conformance job runs) in parallel jobs. Nothing is
+# Gates a change to K8S_GO_DEP_PINS before it is merged and published: each
+# patch release a changed pin entry starts at, and the latest patch release of
+# that minor version, which inherits every entry, with its pins applied and the
+# Go version it builds with, must first reach no known vulnerability
+# (govulncheck), then pass the Kubernetes unit tests, integration tests and e2e
+# tests on kind (upstream's pull-kubernetes-e2e-kind specs plus the whole
+# conformance suite, with the same e2e-k8s.sh) in parallel jobs. Nothing is
 # published.
 #
 # Make the "Go dependency pins tested" check required on main. It runs on every
@@ -16,12 +17,12 @@ on:
   pull_request:
   workflow_dispatch:
     inputs:
-      k8s-minor-version:
-        description: Minor version to test, e.g. v1.35, with or without pins (its latest patch release is tested)
+      k8s-version:
+        description: Kubernetes version to test, with or without pins, e.g. v1.36.6, or a minor version, e.g. v1.36, for its latest patch release
         required: true
         type: string
       vulncheck-only:
-        description: Only run the vulnerability check, not the unit and conformance tests
+        description: Only run the vulnerability check, not the unit, integration and e2e tests
         required: false
         type: boolean
         default: false
@@ -52,9 +53,9 @@ jobs:
         id: matrix
         env:
           BASE_REF: ${{ github.event_name == 'pull_request' && format('origin/{0}', github.base_ref) || '' }}
-          ONLY_MINOR: ${{ inputs.k8s-minor-version }}
+          ONLY_VERSION: ${{ inputs.k8s-version }}
         run: |
-          matrix=$(./kubernetes-deps/ci.sh versions)
+          matrix=$(./hack/pin-deps/ci.sh versions)
           echo "matrix=${matrix}" >> "$GITHUB_OUTPUT"
           echo "### Kubernetes versions to test" >> "$GITHUB_STEP_SUMMARY"
           echo "${matrix}" | jq -r '.version[] | "- \(.)"' >> "$GITHUB_STEP_SUMMARY"
@@ -81,7 +82,7 @@ jobs:
           dir: ${{ env.K8S_DIR }}
 
       - name: Check vulnerabilities
-        run: ./kubernetes-deps/ci.sh vulncheck "$K8S_DIR"
+        run: ./hack/pin-deps/ci.sh vulncheck "$K8S_DIR"
 
   unit:
     needs: [detect, vulncheck]
@@ -105,13 +106,36 @@ jobs:
           dir: ${{ env.K8S_DIR }}
 
       - name: Unit tests
-        working-directory: ${{ env.K8S_DIR }}
-        run: make test
+        run: ./hack/pin-deps/ci.sh unit "$K8S_DIR"
 
-  conformance:
+  integration:
     needs: [detect, vulncheck]
     if: fromJson(needs.detect.outputs.matrix).version[0] != null && !inputs.vulncheck-only
-    name: K8s conformance tests
+    name: K8s integration tests
+    runs-on: large-8_32
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.detect.outputs.matrix) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262  # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Kubernetes ${{ matrix.version }} with its pins
+        uses: ./.github/actions/k8s-pinned-source
+        with:
+          version: ${{ matrix.version }}
+          dir: ${{ env.K8S_DIR }}
+
+      - name: Integration tests
+        run: ./hack/pin-deps/ci.sh integration "$K8S_DIR"
+
+  e2e:
+    needs: [detect, vulncheck]
+    if: fromJson(needs.detect.outputs.matrix).version[0] != null && !inputs.vulncheck-only
+    name: K8s e2e tests
     runs-on: large-8_32
     timeout-minutes: 300
     strategy:
@@ -129,22 +153,22 @@ jobs:
           version: ${{ matrix.version }}
           dir: ${{ env.K8S_DIR }}
 
-      - name: Full conformance on kind
+      - name: E2E tests on kind
         env:
           ARTIFACTS: ${{ github.workspace }}/artifacts
-        run: ./kubernetes-deps/ci.sh conformance "$K8S_DIR"
+        run: ./hack/pin-deps/ci.sh e2e "$K8S_DIR"
 
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02  # v4.6.2
         with:
-          name: conformance-${{ matrix.version }}
+          name: e2e-${{ matrix.version }}
           path: artifacts
           if-no-files-found: ignore
 
   result:
     name: Go dependency pins tested
-    needs: [detect, vulncheck, unit, conformance]
+    needs: [detect, vulncheck, unit, integration, e2e]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -158,5 +182,6 @@ jobs:
           DETECT: ${{ needs.detect.result }}
           VULNCHECK: ${{ needs.vulncheck.result }}
           UNIT: ${{ needs.unit.result }}
-          CONFORMANCE: ${{ needs.conformance.result }}
-        run: ./kubernetes-deps/ci.sh report
+          INTEGRATION: ${{ needs.integration.result }}
+          E2E: ${{ needs.e2e.result }}
+        run: ./hack/pin-deps/ci.sh report
